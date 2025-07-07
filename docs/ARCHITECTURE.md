@@ -1,30 +1,30 @@
-# Architecture Overview: CloudBridge Relay Client
+# Обзор архитектуры: CloudBridge Relay Client
 
-## Main Components
+## Основные компоненты
 
-- **ConnectionManager**: Establishes and maintains secure TLS 1.3 connections to the relay server.
-- **AuthenticationManager**: Handles JWT and Keycloak authentication, token validation, and claim extraction.
-- **TunnelManager**: Manages tunnel creation, validation, and lifecycle (local/remote port mapping, proxying).
-- **HeartbeatManager**: Periodically sends heartbeat messages to monitor connection health and trigger reconnection if needed.
-- **ErrorHandler**: Centralized error handling, retry logic, and exponential backoff for transient errors.
-- **Config**: Loads and validates configuration from YAML, environment variables, and CLI flags.
-- **Logging**: Structured logging with configurable level and format.
+- **ConnectionManager**: Устанавливает и поддерживает защищённые соединения TLS 1.3 с сервером relay.
+- **AuthenticationManager**: Обрабатывает аутентификацию через JWT и Keycloak, проверяет токены и извлекает claims.
+- **TunnelManager**: Управляет созданием, валидацией и жизненным циклом туннелей (локальные/удалённые порты, проксирование).
+- **HeartbeatManager**: Периодически отправляет heartbeat для контроля состояния соединения и инициирует переподключение при необходимости.
+- **ErrorHandler**: Централизованная обработка ошибок, логика повторов и экспоненциальный backoff для временных ошибок.
+- **Config**: Загружает и валидирует конфигурацию из YAML, переменных окружения и CLI.
+- **Logging**: Структурированное логирование с настраиваемым уровнем и форматом.
 
-## Data Flow
+## Поток данных
 
-1. **Startup**: Load config → parse CLI/env → validate
-2. **Connect**: Establish TLS 1.3 connection to relay
-3. **Hello**: Exchange hello/hello_response messages (protocol negotiation)
-4. **Authenticate**: Send JWT/Keycloak token, receive auth_response
-5. **Tunnel**: Send tunnel_info, receive tunnel_response, start proxy
-6. **Heartbeat**: Periodically send heartbeat, handle heartbeat_response
-7. **Error Handling**: On error, apply retry/backoff or shutdown gracefully
+1. **Запуск**: Загрузка конфигурации → разбор CLI/ENV → валидация
+2. **Подключение**: Установка TLS 1.3 соединения с relay
+3. **Hello**: Обмен hello/hello_response (согласование протокола)
+4. **Аутентификация**: Отправка JWT/Keycloak токена, получение auth_response
+5. **Туннель**: Отправка tunnel_info, получение tunnel_response, запуск прокси
+6. **Heartbeat**: Периодическая отправка heartbeat, обработка heartbeat_response
+7. **Обработка ошибок**: При ошибке — повтор/отложенный повтор или корректное завершение
 
-## Component Interaction Diagram
+## Диаграмма взаимодействия компонентов
 
 ```mermaid
 graph TD
-  A[Config Loader] --> B[ConnectionManager]
+  A[Загрузчик конфигурации] --> B[ConnectionManager]
   B --> C[AuthenticationManager]
   C --> D[TunnelManager]
   B --> E[HeartbeatManager]
@@ -40,17 +40,17 @@ graph TD
   F --> G
 ```
 
-## Extensibility
-- New authentication methods can be added via AuthenticationManager
-- Additional tunnel types or protocols can be added to TunnelManager
-- Logging and monitoring can be integrated via Logging component
+## Расширяемость
+- Новые методы аутентификации можно добавить через AuthenticationManager
+- Дополнительные типы туннелей или протоколы — через TunnelManager
+- Логирование и мониторинг интегрируются через Logging
 
-## Security Boundaries
-- All network traffic is encrypted (TLS 1.3)
-- Tokens and secrets are never logged
-- All errors and retries are logged for audit
+## Границы безопасности
+- Весь сетевой трафик шифруется (TLS 1.3)
+- Токены и секреты никогда не логируются
+- Все ошибки и повторы логируются для аудита
 
-## See Also
-- `docs/README.md` for usage
-- `docs/API.md` for protocol details
-- `docs/SECURITY.md` for security model 
+## См. также
+- `docs/README.md` — примеры использования
+- `docs/API.md` — детали протокола
+- `docs/SECURITY.md` — модель безопасности 

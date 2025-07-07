@@ -1,75 +1,75 @@
-# Testing Guide: CloudBridge Relay Client
+# Руководство по тестированию: CloudBridge Relay Client
 
-## Unit Testing
+## Юнит-тесты
 
-### Running All Unit Tests
+### Запуск всех юнит-тестов
 ```bash
 go test ./...
 ```
 
-### What to Test
-- Authentication (JWT, Keycloak)
-- Tunnel creation and validation
-- Error handling (all error codes)
-- Rate limiting and retry logic
-- Heartbeat manager
+### Что тестировать
+- Аутентификация (JWT, Keycloak)
+- Создание и валидация туннелей
+- Обработка ошибок (все коды ошибок)
+- Ограничение скорости и логику повторов
+- Менеджер heartbeat
 
-### Example: Run Tests for a Specific Package
+### Пример: запуск тестов для конкретного пакета
 ```bash
 go test ./pkg/auth
 ```
 
 ---
 
-## Integration Testing
+## Интеграционные тесты
 
-### Full Connection Cycle
-- Start a test relay server (with TLS 1.3)
-- Run the client with a valid JWT token
-- Verify connection, authentication, tunnel creation, heartbeat
+### Полный цикл соединения
+- Запустите тестовый relay-сервер (с TLS 1.3)
+- Запустите клиент с валидным JWT-токеном
+- Проверьте соединение, аутентификацию, создание туннеля, heartbeat
 
 ### TLS 1.3 Handshake
-- Use `openssl s_client -connect relay.example.com:8080 -tls1_3` to verify server
-- Run client and check for successful handshake
+- Используйте `openssl s_client -connect relay.example.com:8080 -tls1_3` для проверки сервера
+- Запустите клиент и проверьте успешное рукопожатие
 
-### Real Relay Server
-- Deploy relay server in test environment
-- Run client end-to-end with real tokens and tunnels
-
----
-
-## Security Testing
-
-### Certificate Validation
-- Test with valid and invalid CA certificates
-- Test with expired or revoked server certificates
-
-### JWT Validation
-- Test with valid, expired, and tampered tokens
-- Test with missing or invalid `sub` claim
-
-### Rate Limiting
-- Simulate burst requests to trigger rate limiting
-- Verify exponential backoff and retry logic
-
-### Penetration Testing
-- Use tools like `nmap`, `sslscan`, and custom scripts to test for vulnerabilities
-- Attempt replay, DoS, and protocol fuzzing attacks
+### Реальный relay-сервер
+- Разверните relay-сервер в тестовой среде
+- Проверьте работу клиента end-to-end с реальными токенами и туннелями
 
 ---
 
-## Troubleshooting Failed Tests
-- Use `--verbose` flag for detailed logs
-- Check logs for error codes and stack traces
-- Review `docs/TROUBLESHOOTING.md` for common issues
+## Тестирование безопасности
+
+### Проверка сертификатов
+- Тестируйте с валидными и невалидными CA-сертификатами
+- Тестируйте с просроченными или отозванными сертификатами сервера
+
+### Проверка JWT
+- Тестируйте с валидными, просроченными и поддельными токенами
+- Тестируйте с отсутствующим или невалидным claim `sub`
+
+### Ограничение скорости
+- Смоделируйте всплеск запросов для проверки лимитов
+- Проверьте экспоненциальный backoff и логику повторов
+
+### Пентесты
+- Используйте инструменты (`nmap`, `sslscan`, скрипты) для поиска уязвимостей
+- Пробуйте атаки replay, DoS, fuzzing протокола
 
 ---
 
-## Continuous Integration
-- Integrate `go test ./...` into your CI pipeline (GitHub Actions, GitLab CI, etc.)
-- Fail builds on test failures
+## Диагностика неудачных тестов
+- Используйте флаг `--verbose` для подробных логов
+- Проверяйте логи на коды ошибок и stack trace
+- См. `docs/TROUBLESHOOTING.md` для типовых проблем
 
 ---
 
-## Reporting Issues
-- Open issues on GitHub with test logs and environment details (do not include secrets) 
+## CI
+- Интегрируйте `go test ./...` в ваш CI (GitHub Actions, GitLab CI и др.)
+- Сборка должна падать при ошибках тестов
+
+---
+
+## Сообщение об ошибках
+- Открывайте issue на GitHub с логами тестов и деталями окружения (не публикуйте секреты) 

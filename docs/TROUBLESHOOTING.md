@@ -1,44 +1,44 @@
-# Troubleshooting Guide: CloudBridge Relay Client
+# Руководство по устранению неполадок: CloudBridge Relay Client
 
-## Common Issues & Solutions
+## Частые проблемы и решения
 
-### 1. TLS Handshake Fails
-- **Check**: Is the relay server running and reachable?
-- **Check**: Are you using TLS 1.3 and correct cipher suites?
-- **Check**: Is the CA certificate path correct in config?
-- **Check**: Is the server certificate valid and not expired?
+### 1. Ошибка TLS-рукопожатия
+- **Проверьте**: Запущен ли relay-сервер и доступен ли он?
+- **Проверьте**: Используется ли TLS 1.3 и корректные шифры?
+- **Проверьте**: Верный ли путь к CA-сертификату в конфиге?
+- **Проверьте**: Действителен ли сертификат сервера и не истёк ли он?
 
-### 2. Authentication Fails (`invalid_token`)
-- **Check**: Is your JWT token valid (not expired, correct signature)?
-- **Check**: Does the JWT secret match the relay server?
-- **Check**: For Keycloak, are realm, client_id, and JWKS endpoint correct?
-- **Check**: Does the token have a `sub` claim?
+### 2. Ошибка аутентификации (`invalid_token`)
+- **Проверьте**: Валиден ли JWT-токен (не истёк, корректная подпись)?
+- **Проверьте**: Совпадает ли секрет JWT с сервером relay?
+- **Проверьте**: Для Keycloak — корректны ли realm, client_id и JWKS endpoint?
+- **Проверьте**: Есть ли в токене claim `sub`?
 
-### 3. Rate Limit Exceeded
-- **Check**: Are you sending too many requests per second?
-- **Solution**: Wait for backoff and retry, or increase limits in config if you control the server.
+### 3. Превышен лимит запросов
+- **Проверьте**: Не отправляете ли вы слишком много запросов в секунду?
+- **Решение**: Подождите backoff и повторите попытку, либо увеличьте лимиты в конфиге (если вы управляете сервером).
 
-### 4. Tunnel Creation Fails
-- **Check**: Are local and remote ports valid and not in use?
-- **Check**: Is the remote host reachable from the relay server?
-- **Check**: Is the tunnel_id unique?
+### 4. Не удаётся создать туннель
+- **Проверьте**: Валидны ли локальный и удалённый порты, не заняты ли они?
+- **Проверьте**: Достижим ли удалённый хост с relay-сервера?
+- **Проверьте**: Уникален ли tunnel_id?
 
-### 5. Heartbeat Fails
-- **Check**: Is the connection to the relay server still alive?
-- **Check**: Is there network latency or firewall issues?
+### 5. Не работает heartbeat
+- **Проверьте**: Живо ли соединение с relay-сервером?
+- **Проверьте**: Нет ли сетевых задержек или проблем с фаерволом?
 
-### 6. Unknown Message Type
-- **Check**: Are you using a compatible client and server version?
-- **Check**: Is the protocol version in hello message correct?
+### 6. Неизвестный тип сообщения
+- **Проверьте**: Используете ли вы совместимые версии клиента и сервера?
+- **Проверьте**: Корректна ли версия протокола в hello-сообщении?
 
-## Debugging Tips
-- Run with `--verbose` to enable detailed logging.
-- Check logs for error codes and messages.
-- Use `openssl s_client` to debug TLS connections.
-- Validate JWT tokens with [jwt.io](https://jwt.io/).
-- Check relay server logs for more details.
+## Советы по отладке
+- Запускайте с `--verbose` для подробного логирования.
+- Проверяйте логи на коды ошибок и сообщения.
+- Используйте `openssl s_client` для диагностики TLS.
+- Проверяйте JWT-токены на [jwt.io](https://jwt.io/).
+- Смотрите логи relay-сервера для подробностей.
 
-## Getting Help
-- Review the README and docs/README.md for configuration and usage.
-- Open an issue on GitHub with logs and config details (do not include secrets).
-- For security issues, contact the security contact in the main README. 
+## Получение помощи
+- Изучите README и docs/README.md для конфигурации и примеров.
+- Откройте issue на GitHub с логами и конфигом (не публикуйте секреты).
+- По вопросам безопасности — контакты в основном README. 

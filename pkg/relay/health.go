@@ -49,17 +49,37 @@ func GetHealthStatus() HealthStatus {
 }
 
 func getMetricValue(metric prometheus.Collector) float64 {
-	var m dto.Metric
-	if err := metric.(prometheus.Metric).Write(&m); err != nil {
+	// Handle different metric types
+	switch m := metric.(type) {
+	case *prometheus.CounterVec:
+		// For CounterVec, we need to get all metrics and sum them
+		ch := make(chan prometheus.Metric, 100)
+		go func() {
+			m.Collect(ch)
+			close(ch)
+		}()
+		var sum float64
+		for metric := range ch {
+			var dtoMetric dto.Metric
+			if err := metric.Write(&dtoMetric); err == nil && dtoMetric.Counter != nil {
+				sum += dtoMetric.Counter.GetValue()
+			}
+		}
+		return sum
+	default:
+		// Try the original approach for other types
+		var dtoMetric dto.Metric
+		if err := metric.(prometheus.Metric).Write(&dtoMetric); err != nil {
+			return 0
+		}
+		if dtoMetric.Counter != nil {
+			return dtoMetric.Counter.GetValue()
+		}
+		if dtoMetric.Gauge != nil {
+			return dtoMetric.Gauge.GetValue()
+		}
 		return 0
 	}
-	if m.Counter != nil {
-		return m.Counter.GetValue()
-	}
-	if m.Gauge != nil {
-		return m.Gauge.GetValue()
-	}
-	return 0
 }
 
 // HealthCheckHandler обрабатывает запросы к /health
@@ -71,5 +91,7 @@ func HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}
 	
-	json.NewEncoder(w).Encode(status)
+	if err := json.NewEncoder(w).Encode(status); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
 } 

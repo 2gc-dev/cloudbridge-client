@@ -1,47 +1,47 @@
-# Deployment Guide: CloudBridge Relay Client
+# Руководство по развёртыванию: CloudBridge Relay Client
 
-## Prerequisites
+## Необходимые условия
 - Go 1.20+
-- Access to relay server (TLS 1.3 required)
-- Valid JWT token or Keycloak credentials
+- Доступ к серверу relay (требуется TLS 1.3)
+- Валидный JWT-токен или учётные данные Keycloak
 
-## Building from Source
+## Сборка из исходников
 ```bash
 git clone https://github.com/2gc-dev/cloudbridge-client.git
 cd cloudbridge-client
 go build -o cloudbridge-client ./cmd/cloudbridge-client
 ```
 
-## Pre-built Binaries
-- Download from the [releases page](https://github.com/2gc-dev/cloudbridge-client/releases)
-- Make executable: `chmod +x cloudbridge-client`
+## Готовые бинарные файлы
+- Скачайте с [страницы релизов](https://github.com/2gc-dev/cloudbridge-client/releases)
+- Сделайте исполняемым: `chmod +x cloudbridge-client`
 
-## Running the Client
+## Запуск клиента
 ```bash
-./cloudbridge-client --token "your-jwt-token"
+./cloudbridge-client --token "ваш-jwt-токен"
 ```
 
-## Using a Configuration File
+## Использование конфигурационного файла
 ```bash
-./cloudbridge-client --config config.yaml --token "your-jwt-token"
+./cloudbridge-client --config config.yaml --token "ваш-jwt-токен"
 ```
 
-## Environment Variables
-All config options can be set via `CLOUDBRIDGE_` prefix, e.g.:
+## Переменные окружения
+Все параметры можно задать через префикс `CLOUDBRIDGE_`, например:
 ```bash
 export CLOUDBRIDGE_RELAY_HOST="relay.example.com"
-export CLOUDBRIDGE_AUTH_SECRET="your-jwt-secret"
+export CLOUDBRIDGE_AUTH_SECRET="jwt-секрет"
 ```
 
-## Systemd Service Example
-Create `/etc/systemd/system/cloudbridge-client.service`:
+## Пример systemd-сервиса
+Создайте файл `/etc/systemd/system/cloudbridge-client.service`:
 ```ini
 [Unit]
 Description=CloudBridge Relay Client
 After=network.target
 
 [Service]
-ExecStart=/path/to/cloudbridge-client --config /path/to/config.yaml --token "your-jwt-token"
+ExecStart=/path/to/cloudbridge-client --config /path/to/config.yaml --token "ваш-jwt-токен"
 Restart=on-failure
 User=ubuntu
 
@@ -49,12 +49,12 @@ User=ubuntu
 WantedBy=multi-user.target
 ```
 
-## Updating
-- Pull latest changes: `git pull`
-- Rebuild: `go build -o cloudbridge-client ./cmd/cloudbridge-client`
+## Обновление
+- Получите последние изменения: `git pull`
+- Пересоберите: `go build -o cloudbridge-client ./cmd/cloudbridge-client`
 
-## Logs
-- By default, logs are printed to stdout. Configure via `config.yaml`.
+## Логи
+- По умолчанию логи выводятся в stdout. Настраивается через `config.yaml`.
 
-## Troubleshooting
-- See `docs/TROUBLESHOOTING.md` for common issues. 
+## Диагностика
+- См. `docs/TROUBLESHOOTING.md` для типовых проблем. 

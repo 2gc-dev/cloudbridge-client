@@ -146,7 +146,9 @@ func (m *Manager) isPortInUse(port int) bool {
 	if err != nil {
 		return true
 	}
-	ln.Close()
+	if err := ln.Close(); err != nil {
+		fmt.Printf("Error closing listener: %v\n", err)
+	}
 	return false
 }
 

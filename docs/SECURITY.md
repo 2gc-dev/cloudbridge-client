@@ -1,47 +1,47 @@
-# Security Considerations for CloudBridge Relay Client
+# Вопросы безопасности для CloudBridge Relay Client
 
 ## TLS
-- Enforced TLS 1.3 only
-- Only secure cipher suites allowed:
+- Используется только TLS 1.3
+- Разрешены только безопасные шифры:
   - TLS_AES_256_GCM_SHA384
   - TLS_CHACHA20_POLY1305_SHA256
   - TLS_AES_128_GCM_SHA256
-- Certificate validation is mandatory
-- SNI (Server Name Indication) supported
-- Optional CA pinning via config
-- HSTS and OCSP stapling recommended on server side
+- Обязательная проверка сертификата
+- Поддержка SNI (Server Name Indication)
+- Возможность закрепления CA через конфиг
+- На стороне сервера рекомендуется HSTS и OCSP stapling
 
-## Authentication
-- **JWT**: Only HS256 supported, secret must match relay server
-- **Keycloak**: OpenID Connect, automatic JWKS update, role/permission checks
-- **Claims**: `sub` (subject) required for user identification
-- **Token validation**: signature, expiration, issuer
-- **Never log or persist tokens in plaintext**
+## Аутентификация
+- **JWT**: поддерживается только HS256, секрет должен совпадать с сервером relay
+- **Keycloak**: OpenID Connect, автоматическое обновление JWKS, проверка ролей/прав
+- **Claims**: требуется `sub` (subject) для идентификации пользователя
+- **Проверка токена**: подпись, срок действия, issuer
+- **Никогда не логируйте и не храните токены в открытом виде**
 
-## Rate Limiting
-- Per-user (by JWT subject)
-- Default: 100 requests/sec, burst 200
-- Exponential backoff, max 3 retries
-- All rate limit violations are logged
+## Ограничение скорости
+- По пользователю (по subject JWT)
+- По умолчанию: 100 запросов/сек, burst 200
+- Экспоненциальный backoff, максимум 3 повтора
+- Все нарушения лимитов логируются
 
-## Logging & Audit
-- All operations are logged (level configurable)
-- Sensitive data (tokens, secrets) never logged
-- Audit logs should be protected and regularly reviewed
+## Логирование и аудит
+- Все операции логируются (уровень настраивается)
+- Чувствительные данные (токены, секреты) не логируются
+- Аудит-логи должны быть защищены и регулярно проверяться
 
-## Error Handling
-- All protocol errors are handled and logged
-- Exponential backoff for retryable errors
-- Graceful shutdown on fatal errors
+## Обработка ошибок
+- Все ошибки протокола обрабатываются и логируются
+- Для ошибок с возможностью повтора используется экспоненциальный backoff
+- Корректное завершение работы при фатальных ошибках
 
-## Secure Deployment
-- Store config files and secrets securely (use environment variables for secrets if possible)
-- Restrict access to config.yaml and logs
-- Regularly update dependencies and perform security audits
+## Безопасное развёртывание
+- Храните конфиги и секреты в защищённых местах (по возможности используйте переменные окружения)
+- Ограничьте доступ к config.yaml и логам
+- Регулярно обновляйте зависимости и проводите аудит безопасности
 
-## Penetration Testing
-- Regularly test for vulnerabilities (TLS, JWT, replay, DoS)
-- Validate server certificates and JWTs in all test cases
+## Пентесты
+- Регулярно тестируйте на уязвимости (TLS, JWT, replay, DoS)
+- Проверяйте сертификаты сервера и JWT во всех тестах
 
-## Contact
-- For security issues, contact the security contact listed in the main README. 
+## Контакты
+- По вопросам безопасности обращайтесь к контактам, указанным в основном README. 

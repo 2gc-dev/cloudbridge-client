@@ -1,11 +1,11 @@
-# CloudBridge Relay Client API & Protocol
+# API и протокол CloudBridge Relay Client
 
-All messages are JSON, UTF-8 encoded, no compression.
+Все сообщения — JSON, кодировка UTF-8, без сжатия.
 
-## Message Types
+## Типы сообщений
 
 ### 1. Hello
-- **Client → Server**
+- **Клиент → Сервер**
 ```json
 {
   "type": "hello",
@@ -13,7 +13,7 @@ All messages are JSON, UTF-8 encoded, no compression.
   "features": ["tls", "heartbeat", "tunnel_info"]
 }
 ```
-- **Server → Client**
+- **Сервер → Клиент**
 ```json
 {
   "type": "hello_response",
@@ -22,15 +22,15 @@ All messages are JSON, UTF-8 encoded, no compression.
 }
 ```
 
-### 2. Authentication
-- **Client → Server**
+### 2. Аутентификация
+- **Клиент → Сервер**
 ```json
 {
   "type": "auth",
   "token": "<jwt>"
 }
 ```
-- **Server → Client**
+- **Сервер → Клиент**
 ```json
 {
   "type": "auth_response",
@@ -39,8 +39,8 @@ All messages are JSON, UTF-8 encoded, no compression.
 }
 ```
 
-### 3. Tunnel Management
-- **Client → Server**
+### 3. Управление туннелем
+- **Клиент → Сервер**
 ```json
 {
   "type": "tunnel_info",
@@ -50,7 +50,7 @@ All messages are JSON, UTF-8 encoded, no compression.
   "remote_port": 3389
 }
 ```
-- **Server → Client**
+- **Сервер → Клиент**
 ```json
 {
   "type": "tunnel_response",
@@ -60,39 +60,39 @@ All messages are JSON, UTF-8 encoded, no compression.
 ```
 
 ### 4. Heartbeat
-- **Client → Server**
+- **Клиент → Сервер**
 ```json
 {
   "type": "heartbeat"
 }
 ```
-- **Server → Client**
+- **Сервер → Клиент**
 ```json
 {
   "type": "heartbeat_response"
 }
 ```
 
-### 5. Error
-- **Server → Client**
+### 5. Ошибка
+- **Сервер → Клиент**
 ```json
 {
   "type": "error",
   "code": "rate_limit_exceeded",
-  "message": "Rate limit exceeded for user"
+  "message": "Превышен лимит запросов для пользователя"
 }
 ```
 
-## Error Codes
-- `invalid_token` — Invalid or expired JWT token
-- `rate_limit_exceeded` — Rate limit exceeded
-- `connection_limit_reached` — Connection limit reached
-- `server_unavailable` — Server unavailable
-- `invalid_tunnel_info` — Invalid tunnel info
-- `unknown_message_type` — Unknown message type
+## Коды ошибок
+- `invalid_token` — неверный или истёкший JWT-токен
+- `rate_limit_exceeded` — превышен лимит запросов
+- `connection_limit_reached` — превышено число соединений
+- `server_unavailable` — сервер недоступен
+- `invalid_tunnel_info` — некорректные параметры туннеля
+- `unknown_message_type` — неизвестный тип сообщения
 
-## Notes
-- All fields are required unless otherwise specified.
-- All messages must be valid UTF-8 JSON.
-- No message compression is used.
-- All connections must use TLS 1.3. 
+## Примечания
+- Все поля обязательны, если не указано иное.
+- Все сообщения должны быть валидным JSON в UTF-8.
+- Сжатие сообщений не используется.
+- Все соединения должны использовать TLS 1.3. 

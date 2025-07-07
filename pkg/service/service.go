@@ -2,10 +2,12 @@ package service
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 const (
@@ -119,7 +121,7 @@ func Status() (string, error) {
 // Вспомогательные функции для установки на разных ОС
 func installLinux(binaryPath string) error {
 	// Копируем бинарный файл
-	if err := os.MkdirAll("/usr/local/bin", 0755); err != nil {
+	if err := os.MkdirAll("/usr/local/bin", 0750); err != nil {
 		return err
 	}
 	if err := copyFile(binaryPath, "/usr/local/bin/"+serviceName); err != nil {
@@ -127,7 +129,7 @@ func installLinux(binaryPath string) error {
 	}
 
 	// Копируем файл службы
-	if err := os.MkdirAll("/etc/systemd/system", 0755); err != nil {
+	if err := os.MkdirAll("/etc/systemd/system", 0750); err != nil {
 		return err
 	}
 	serviceContent := `[Unit]
@@ -145,15 +147,18 @@ Environment=CONFIG_FILE=/etc/cloudbridge-client/config.yaml
 [Install]
 WantedBy=multi-user.target`
 
-	if err := os.WriteFile("/etc/systemd/system/"+serviceName+".service", []byte(serviceContent), 0644); err != nil {
-		return err
-	}
+	        if err := os.WriteFile("/etc/systemd/system/"+serviceName+".service", []byte(serviceContent), 0600); err != nil {
+                return err
+        }
 
 	// Перезагружаем systemd и включаем службу
 	if err := exec.Command("systemctl", "daemon-reload").Run(); err != nil {
 		return err
 	}
-	return exec.Command("systemctl", "enable", serviceName).Run()
+	if err := exec.Command("systemctl", "enable", serviceName).Run(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func installWindows(binaryPath string) error {
@@ -170,10 +175,18 @@ func installWindows(binaryPath string) error {
 
 	// Настраиваем параметры службы
 	configPath := filepath.Join(os.Getenv("ProgramData"), "cloudbridge-client", "config.yaml")
-	exec.Command("nssm", "set", serviceName, "AppParameters", "--config", configPath).Run()
-	exec.Command("nssm", "set", serviceName, "DisplayName", "CloudBridge Client").Run()
-	exec.Command("nssm", "set", serviceName, "Description", "CloudBridge Client Service").Run()
-	exec.Command("nssm", "set", serviceName, "Start", "SERVICE_AUTO_START").Run()
+	if err := exec.Command("nssm", "set", serviceName, "AppParameters", "--config", configPath).Run(); err != nil {
+		log.Printf("Error setting app parameters: %v", err)
+	}
+	if err := exec.Command("nssm", "set", serviceName, "DisplayName", "CloudBridge Client").Run(); err != nil {
+		log.Printf("Error setting display name: %v", err)
+	}
+	if err := exec.Command("nssm", "set", serviceName, "Description", "CloudBridge Client Service").Run(); err != nil {
+		log.Printf("Error setting description: %v", err)
+	}
+	if err := exec.Command("nssm", "set", serviceName, "Start", "SERVICE_AUTO_START").Run(); err != nil {
+		log.Printf("Error setting start mode: %v", err)
+	}
 
 	return nil
 }
@@ -181,11 +194,11 @@ func installWindows(binaryPath string) error {
 func installMacOS(binaryPath string) error {
 	// Создаем необходимые директории
 	dirs := []string{"/usr/local/bin", "/Library/LaunchDaemons", logDir}
-	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return err
-		}
-	}
+	        for _, dir := range dirs {
+                if err := os.MkdirAll(dir, 0750); err != nil {
+                        return err
+                }
+        }
 
 	// Копируем бинарный файл
 	if err := copyFile(binaryPath, "/usr/local/bin/"+serviceName); err != nil {
@@ -218,9 +231,9 @@ func installMacOS(binaryPath string) error {
 </dict>
 </plist>`
 
-	if err := os.WriteFile("/Library/LaunchDaemons/com.cloudbridge.client.plist", []byte(plistContent), 0644); err != nil {
-		return err
-	}
+	        if err := os.WriteFile("/Library/LaunchDaemons/com.cloudbridge.client.plist", []byte(plistContent), 0600); err != nil {
+                return err
+        }
 
 	// Загружаем службу
 	return exec.Command("launchctl", "load", "/Library/LaunchDaemons/com.cloudbridge.client.plist").Run()
@@ -228,30 +241,53 @@ func installMacOS(binaryPath string) error {
 
 // Вспомогательные функции для удаления службы
 func uninstallLinux() error {
-	exec.Command("systemctl", "stop", serviceName).Run()
-	exec.Command("systemctl", "disable", serviceName).Run()
-	os.Remove("/etc/systemd/system/" + serviceName + ".service")
-	os.Remove("/usr/local/bin/" + serviceName)
-	return exec.Command("systemctl", "daemon-reload").Run()
+	if err := exec.Command("systemctl", "stop", serviceName).Run(); err != nil {
+		log.Printf("Error stopping service: %v", err)
+	}
+	if err := exec.Command("systemctl", "disable", serviceName).Run(); err != nil {
+		log.Printf("Error disabling service: %v", err)
+	}
+	if err := os.Remove("/etc/systemd/system/" + serviceName + ".service"); err != nil {
+		log.Printf("Error removing service file: %v", err)
+	}
+	if err := os.Remove("/usr/local/bin/" + serviceName); err != nil {
+		log.Printf("Error removing binary: %v", err)
+	}
+	if err := exec.Command("systemctl", "daemon-reload").Run(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func uninstallWindows() error {
-	exec.Command("nssm", "stop", serviceName).Run()
+	if err := exec.Command("nssm", "stop", serviceName).Run(); err != nil {
+		log.Printf("Error stopping service: %v", err)
+	}
 	return exec.Command("nssm", "remove", serviceName, "confirm").Run()
 }
 
 func uninstallMacOS() error {
-	exec.Command("launchctl", "unload", "/Library/LaunchDaemons/com.cloudbridge.client.plist").Run()
-	os.Remove("/Library/LaunchDaemons/com.cloudbridge.client.plist")
-	os.Remove("/usr/local/bin/" + serviceName)
+	if err := exec.Command("launchctl", "unload", "/Library/LaunchDaemons/com.cloudbridge.client.plist").Run(); err != nil {
+		log.Printf("Error unloading service: %v", err)
+	}
+	if err := os.Remove("/Library/LaunchDaemons/com.cloudbridge.client.plist"); err != nil {
+		log.Printf("Error removing plist file: %v", err)
+	}
+	if err := os.Remove("/usr/local/bin/" + serviceName); err != nil {
+		log.Printf("Error removing binary: %v", err)
+	}
 	return nil
 }
 
 // Вспомогательная функция для копирования файлов
 func copyFile(src, dst string) error {
+	// Validate source path to prevent directory traversal
+	if !filepath.IsAbs(src) || strings.Contains(src, "..") {
+		return fmt.Errorf("invalid source path: %s", src)
+	}
 	input, err := os.ReadFile(src)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dst, input, 0755)
+	return os.WriteFile(dst, input, 0600)
 } 

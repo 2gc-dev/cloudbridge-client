@@ -1,30 +1,34 @@
 package main
 
 import (
-<<<<<<< HEAD
-	"flag"
-	"io"
-=======
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
->>>>>>> ebb63d9 (feat: implement CloudBridge Relay Client with TLS 1.3, JWT auth, tunnels, heartbeat, rate limiting, comprehensive docs and tests)
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
 	"syscall"
-<<<<<<< HEAD
-	"crypto/tls"
 	"time"
-	"net/http"
 
 	"github.com/2gc-dev/cloudbridge-client/pkg/config"
 	"github.com/2gc-dev/cloudbridge-client/pkg/relay"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/spf13/cobra"
 )
 
-var version = "1.0.0"
+var (
+	version = "1.0.0"
+	configFile string
+	token      string
+	tunnelID   string
+	localPort  int
+	remoteHost string
+	remotePort int
+	verbose    bool
+)
 
 const (
 	maxRetries      = 5
@@ -48,18 +52,30 @@ func main() {
 	flag.Parse()
 
 	// Логирование в файл и консоль
-	logFile, err := os.OpenFile(*logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	logFile, err := os.OpenFile(*logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		log.Fatalf("Failed to open log file: %v", err)
 	}
-	defer logFile.Close()
-	log.SetOutput(io.MultiWriter(os.Stdout, logFile))
+	defer func() {
+		if err := logFile.Close(); err != nil {
+			log.Printf("Error closing log file: %v", err)
+		}
+	}()
+	log.SetOutput(os.Stdout) // Упростим логирование
 
 	// Запуск метрик и health check
+	metricsServer := &http.Server{
+		Addr:         *metricsAddr,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
-		http.Handle("/health", http.HandlerFunc(relay.HealthCheckHandler))
-		if err := http.ListenAndServe(*metricsAddr, nil); err != nil {
+		http.Handle("/health", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("OK"))
+		}))
+		if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("Failed to start metrics server: %v", err)
 		}
 	}()
@@ -79,26 +95,84 @@ func main() {
 		}
 	}
 
-=======
-	"time"
+	sigChan := make(chan os.Signal, 1)
+	if runtime.GOOS == "windows" {
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
+	} else {
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	}
 
-	"github.com/2gc-dev/cloudbridge-client/pkg/config"
-	"github.com/2gc-dev/cloudbridge-client/pkg/errors"
-	"github.com/2gc-dev/cloudbridge-client/pkg/relay"
-	"github.com/spf13/cobra"
-)
+	go func() {
+		retries := 0
+		delay := initialDelaySec
+		for {
+			start := time.Now()
+			client := relay.NewClient(cfg.TLS.Enabled, tlsConfig)
+			if err := client.Connect(cfg.Server.Host, cfg.Server.Port); err != nil {
+				log.Printf("Failed to connect to relay server: %v", err)
+				retries++
+				if retries > maxRetries {
+					log.Fatalf("Max reconnect attempts reached. Exiting.")
+				}
+				log.Printf("Retrying in %d seconds...", delay)
+				time.Sleep(time.Duration(delay) * time.Second)
+				delay = min(delay*2, maxDelaySec)
+				continue
+			}
+			retries = 0
+			delay = initialDelaySec
+			defer func() {
+				if err := client.Close(); err != nil {
+					log.Printf("Error closing client: %v", err)
+				}
+			}()
 
-var (
-	configFile string
-	token      string
-	tunnelID   string
-	localPort  int
-	remoteHost string
-	remotePort int
-	verbose    bool
-)
+			if err := client.Handshake(cfg.Server.JWTToken, version); err != nil {
+				log.Printf("Handshake failed: %v", err)
+				client.Close()
+				retries++
+				if retries > maxRetries {
+					log.Fatalf("Max reconnect attempts reached. Exiting.")
+				}
+				log.Printf("Retrying in %d seconds...", delay)
+				time.Sleep(time.Duration(delay) * time.Second)
+				delay = min(delay*2, maxDelaySec)
+				continue
+			}
 
-func main() {
+			log.Printf("Connected successfully in %v", time.Since(start))
+
+			// Создание туннеля
+			tunnelID, err := client.CreateTunnel(localPort, remoteHost, remotePort)
+			if err != nil {
+				log.Printf("Failed to create tunnel: %v", err)
+				client.Close()
+				retries++
+				if retries > maxRetries {
+					log.Fatalf("Max reconnect attempts reached. Exiting.")
+				}
+				log.Printf("Retrying in %d seconds...", delay)
+				time.Sleep(time.Duration(delay) * time.Second)
+				delay = min(delay*2, maxDelaySec)
+				continue
+			}
+
+			log.Printf("Tunnel created: %s -> %s:%d", tunnelID, remoteHost, remotePort)
+
+			// Ожидание сигнала завершения
+			<-sigChan
+			log.Println("Shutting down...")
+			client.Close()
+			return
+		}
+	}()
+
+	// Ожидание сигнала завершения
+	<-sigChan
+	log.Println("Shutting down...")
+}
+
+func parseCommand() error {
 	rootCmd := &cobra.Command{
 		Use:   "cloudbridge-client",
 		Short: "CloudBridge Relay Client",
@@ -116,12 +190,11 @@ func main() {
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging")
 
 	// Mark required flags
-	rootCmd.MarkFlagRequired("token")
-
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+	if err := rootCmd.MarkFlagRequired("token"); err != nil {
+		return fmt.Errorf("failed to mark token flag as required: %w", err)
 	}
+
+	return rootCmd.Execute()
 }
 
 func run(cmd *cobra.Command, args []string) error {
@@ -140,17 +213,20 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create client
-	client, err := relay.NewClient(cfg)
+	client, err := relay.NewClientFromConfig(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to create client: %w", err)
 	}
-	defer client.Close()
+	defer func() {
+		if err := client.Close(); err != nil {
+			log.Printf("Error closing client: %v", err)
+		}
+	}()
 
 	// Set up signal handling for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
+	_, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
->>>>>>> ebb63d9 (feat: implement CloudBridge Relay Client with TLS 1.3, JWT auth, tunnels, heartbeat, rate limiting, comprehensive docs and tests)
 	sigChan := make(chan os.Signal, 1)
 	if runtime.GOOS == "windows" {
 		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
@@ -158,17 +234,13 @@ func run(cmd *cobra.Command, args []string) error {
 		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	}
 
-<<<<<<< HEAD
 	go func() {
 		retries := 0
 		delay := initialDelaySec
 		for {
 			start := time.Now()
-			client := relay.NewClient(cfg.TLS.Enabled, tlsConfig)
 			if err := client.Connect(cfg.Server.Host, cfg.Server.Port); err != nil {
 				log.Printf("Failed to connect to relay server: %v", err)
-				relay.RecordError("connection_failed")
-				relay.UpdateHealthStatus("degraded")
 				retries++
 				if retries > maxRetries {
 					log.Fatalf("Max reconnect attempts reached. Exiting.")
@@ -180,12 +252,9 @@ func run(cmd *cobra.Command, args []string) error {
 			}
 			retries = 0
 			delay = initialDelaySec
-			defer client.Close()
 
 			if err := client.Handshake(cfg.Server.JWTToken, version); err != nil {
 				log.Printf("Handshake failed: %v", err)
-				relay.RecordError("handshake_failed")
-				relay.UpdateHealthStatus("degraded")
 				client.Close()
 				retries++
 				if retries > maxRetries {
@@ -197,23 +266,12 @@ func run(cmd *cobra.Command, args []string) error {
 				continue
 			}
 
-			relay.RecordConnection(time.Since(start).Seconds())
-			relay.UpdateHealthStatus("ok")
+			log.Printf("Connected successfully in %v", time.Since(start))
 
-			err := client.EventLoop(func(tunnelInfo map[string]interface{}) {
-				log.Printf("[EVENT] Tunnel registration requested: %v", tunnelInfo)
-				_, err := client.CreateTunnel(tunnelInfo)
-				if err != nil {
-					log.Printf("Failed to create tunnel: %v", err)
-					relay.RecordError("tunnel_creation_failed")
-					return
-				}
-				relay.SetActiveTunnels(len(client.ListTunnels()))
-			})
+			// Создание туннеля
+			tunnelID, err := client.CreateTunnel(localPort, remoteHost, remotePort)
 			if err != nil {
-				log.Printf("Event loop error: %v", err)
-				relay.RecordError("event_loop_failed")
-				relay.UpdateHealthStatus("degraded")
+				log.Printf("Failed to create tunnel: %v", err)
 				client.Close()
 				retries++
 				if retries > maxRetries {
@@ -224,13 +282,21 @@ func run(cmd *cobra.Command, args []string) error {
 				delay = min(delay*2, maxDelaySec)
 				continue
 			}
-			break
+
+			log.Printf("Tunnel created: %s -> %s:%d", tunnelID, remoteHost, remotePort)
+
+			// Ожидание сигнала завершения
+			<-sigChan
+			log.Println("Shutting down...")
+			client.Close()
+			return
 		}
 	}()
 
+	// Ожидание сигнала завершения
 	<-sigChan
 	log.Println("Shutting down...")
-	relay.UpdateHealthStatus("shutting_down")
+	return nil
 }
 
 func min(a, b int) int {
@@ -238,107 +304,4 @@ func min(a, b int) int {
 		return a
 	}
 	return b
-=======
-	// Start connection with retry logic
-	if err := connectWithRetry(client); err != nil {
-		return fmt.Errorf("failed to connect: %w", err)
-	}
-
-	log.Printf("Successfully connected to relay server %s:%d", cfg.Relay.Host, cfg.Relay.Port)
-
-	// Authenticate
-	if err := authenticateWithRetry(client, token); err != nil {
-		return fmt.Errorf("failed to authenticate: %w", err)
-	}
-
-	log.Printf("Successfully authenticated with client ID: %s", client.GetClientID())
-
-	// Create tunnel
-	if err := createTunnelWithRetry(client, tunnelID, localPort, remoteHost, remotePort); err != nil {
-		return fmt.Errorf("failed to create tunnel: %w", err)
-	}
-
-	log.Printf("Successfully created tunnel %s: localhost:%d -> %s:%d", 
-		tunnelID, localPort, remoteHost, remotePort)
-
-	// Start heartbeat
-	if err := client.StartHeartbeat(); err != nil {
-		return fmt.Errorf("failed to start heartbeat: %w", err)
-	}
-
-	log.Printf("Heartbeat started")
-
-	// Wait for shutdown signal
-	select {
-	case <-sigChan:
-		log.Println("Received shutdown signal, closing...")
-	case <-ctx.Done():
-		log.Println("Context cancelled, closing...")
-	}
-
-	return nil
-}
-
-// connectWithRetry connects to the relay server with retry logic
-func connectWithRetry(client *relay.Client) error {
-	retryStrategy := client.GetRetryStrategy()
-	
-	for {
-		err := client.Connect()
-		if err == nil {
-			return nil
-		}
-
-		relayErr, _ := errors.HandleError(err)
-		if relayErr == nil || !retryStrategy.ShouldRetry(err) {
-			return err
-		}
-
-		delay := retryStrategy.GetNextDelay(err)
-		log.Printf("Connection failed: %v, retrying in %v...", err, delay)
-		time.Sleep(delay)
-	}
-}
-
-// authenticateWithRetry authenticates with retry logic
-func authenticateWithRetry(client *relay.Client, token string) error {
-	retryStrategy := client.GetRetryStrategy()
-	
-	for {
-		err := client.Authenticate(token)
-		if err == nil {
-			return nil
-		}
-
-		relayErr, _ := errors.HandleError(err)
-		if relayErr == nil || !retryStrategy.ShouldRetry(err) {
-			return err
-		}
-
-		delay := retryStrategy.GetNextDelay(err)
-		log.Printf("Authentication failed: %v, retrying in %v...", err, delay)
-		time.Sleep(delay)
-	}
-}
-
-// createTunnelWithRetry creates a tunnel with retry logic
-func createTunnelWithRetry(client *relay.Client, tunnelID string, localPort int, remoteHost string, remotePort int) error {
-	retryStrategy := client.GetRetryStrategy()
-	
-	for {
-		err := client.CreateTunnel(tunnelID, localPort, remoteHost, remotePort)
-		if err == nil {
-			return nil
-		}
-
-		relayErr, _ := errors.HandleError(err)
-		if relayErr == nil || !retryStrategy.ShouldRetry(err) {
-			return err
-		}
-
-		delay := retryStrategy.GetNextDelay(err)
-		log.Printf("Tunnel creation failed: %v, retrying in %v...", err, delay)
-		time.Sleep(delay)
-	}
->>>>>>> ebb63d9 (feat: implement CloudBridge Relay Client with TLS 1.3, JWT auth, tunnels, heartbeat, rate limiting, comprehensive docs and tests)
 } 

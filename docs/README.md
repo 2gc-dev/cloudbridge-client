@@ -1,39 +1,39 @@
-# CloudBridge Relay Client Documentation
+# Документация CloudBridge Relay Client
 
-## Overview
+## Обзор
 
-CloudBridge Relay Client is a secure, cross-platform client for connecting to CloudBridge Relay servers. It supports TLS 1.3, JWT/Keycloak authentication, tunnel management, heartbeat, rate limiting, and robust error handling.
-
----
-
-## Architecture Overview
-
-- **ConnectionManager**: Handles secure TLS 1.3 connections to the relay server.
-- **AuthenticationManager**: Supports JWT (HS256) and optional Keycloak (OpenID Connect) authentication.
-- **TunnelManager**: Manages tunnel creation, validation, and lifecycle.
-- **HeartbeatManager**: Maintains connection health with periodic heartbeat messages.
-- **ErrorHandler**: Centralized error handling and retry logic with exponential backoff.
-- **Config**: YAML-based configuration, overridable via environment variables and CLI.
+CloudBridge Relay Client — это безопасный кроссплатформенный клиент для подключения к серверам CloudBridge Relay. Поддерживает TLS 1.3, аутентификацию через JWT/Keycloak, управление туннелями, heartbeat, ограничение скорости и устойчивую обработку ошибок.
 
 ---
 
-## Usage Examples
+## Архитектура
 
-### Basic Connection
+- **ConnectionManager**: Управляет защищёнными соединениями TLS 1.3 с relay-сервером.
+- **AuthenticationManager**: Поддержка JWT (HS256) и опционально Keycloak (OpenID Connect).
+- **TunnelManager**: Управление созданием, валидацией и жизненным циклом туннелей.
+- **HeartbeatManager**: Контроль состояния соединения с помощью heartbeat.
+- **ErrorHandler**: Централизованная обработка ошибок и логика повторов с экспоненциальным backoff.
+- **Config**: Конфигурация на YAML, переопределяется через переменные окружения и CLI.
+
+---
+
+## Примеры использования
+
+### Базовое подключение
 ```bash
-cloudbridge-client --token "your-jwt-token"
+cloudbridge-client --token "ваш-jwt-токен"
 ```
 
-### With Configuration File
+### С использованием конфигурационного файла
 ```bash
-cloudbridge-client --config config.yaml --token "your-jwt-token"
+cloudbridge-client --config config.yaml --token "ваш-jwt-токен"
 ```
 
-### Custom Tunnel
+### Кастомный туннель
 ```bash
 cloudbridge-client \
-  --token "your-jwt-token" \
-  --tunnel-id "my-tunnel" \
+  --token "ваш-jwt-токен" \
+  --tunnel-id "мой-туннель" \
   --local-port 3389 \
   --remote-host "192.168.1.100" \
   --remote-port 3389
@@ -41,110 +41,110 @@ cloudbridge-client \
 
 ---
 
-## Configuration Reference
+## Параметры конфигурации
 
-See `config.yaml` for a full example. All options can be set via environment variables (prefix `CLOUDBRIDGE_`).
+См. пример `config.yaml`. Все параметры можно задать через переменные окружения (префикс `CLOUDBRIDGE_`).
 
-- **relay.host**: Relay server hostname
-- **relay.port**: Relay server port
-- **relay.tls.enabled**: Enforce TLS (must be true)
-- **relay.tls.min_version**: Only "1.3" supported
-- **relay.tls.verify_cert**: Enable certificate validation
-- **relay.tls.ca_cert**: Path to CA certificate
-- **auth.type**: "jwt" or "keycloak"
-- **auth.secret**: JWT secret (for HS256)
-- **auth.keycloak.enabled**: Enable Keycloak integration
-- **rate_limiting.enabled**: Enable rate limiting
-- **rate_limiting.max_retries**: Max retry attempts
-- **rate_limiting.backoff_multiplier**: Exponential backoff multiplier
-- **rate_limiting.max_backoff**: Max backoff duration
-
----
-
-## Security Considerations
-
-- **TLS 1.3 enforced**: Only secure cipher suites allowed
-- **Certificate validation**: Strict, with optional CA pinning
-- **JWT**: Only HS256 supported, with claim validation (`sub` required)
-- **Keycloak**: OpenID Connect, automatic JWKS update, role/permission checks
-- **Rate limiting**: Per-user (JWT subject), exponential backoff, logging
-- **Token storage**: Never log or persist tokens insecurely
-- **Audit**: All operations are logged for audit purposes
+- **relay.host**: адрес relay-сервера
+- **relay.port**: порт relay-сервера
+- **relay.tls.enabled**: использовать TLS (должно быть true)
+- **relay.tls.min_version**: только "1.3"
+- **relay.tls.verify_cert**: проверять сертификат
+- **relay.tls.ca_cert**: путь к CA-сертификату
+- **auth.type**: "jwt" или "keycloak"
+- **auth.secret**: секрет для JWT (HS256)
+- **auth.keycloak.enabled**: включить интеграцию с Keycloak
+- **rate_limiting.enabled**: включить ограничение скорости
+- **rate_limiting.max_retries**: максимальное число повторов
+- **rate_limiting.backoff_multiplier**: множитель экспоненциального backoff
+- **rate_limiting.max_backoff**: максимальная длительность backoff
 
 ---
 
-## Error Handling & Troubleshooting
+## Вопросы безопасности
 
-- **invalid_token**: Check JWT validity, signature, and expiration
-- **rate_limit_exceeded**: Too many requests; client will retry with backoff
-- **connection_limit_reached**: Too many concurrent connections
-- **server_unavailable**: Server is down or unreachable
-- **invalid_tunnel_info**: Check tunnel parameters
-- **unknown_message_type**: Protocol mismatch or bug
-
-### Troubleshooting Steps
-- Enable verbose logging (`--verbose`)
-- Check relay server logs
-- Validate TLS certificates and CA
-- Ensure JWT secret matches relay server
-- For Keycloak, check realm, client_id, and JWKS endpoint
+- **TLS 1.3**: только безопасные шифры
+- **Проверка сертификата**: строгая, опционально закрепление CA
+- **JWT**: только HS256, проверка claim `sub`
+- **Keycloak**: OpenID Connect, автоматическое обновление JWKS, проверка ролей
+- **Ограничение скорости**: по пользователю (JWT subject), экспоненциальный backoff, логирование
+- **Токены**: никогда не логируются и не хранятся в открытом виде
+- **Аудит**: все операции логируются
 
 ---
 
-## Acceptance Criteria Checklist
+## Обработка ошибок и диагностика
 
-- [x] TLS 1.3 enforced, strict cipher suites
-- [x] JWT authentication with claim validation
-- [x] Tunnel management (create, validate, proxy)
-- [x] Heartbeat and connection health
-- [x] Rate limiting and retry logic
-- [x] Comprehensive error handling
-- [x] Logging and audit
-- [x] Configurable via YAML, env, CLI
+- **invalid_token**: проверьте валидность, подпись и срок действия JWT
+- **rate_limit_exceeded**: слишком много запросов; клиент повторит с задержкой
+- **connection_limit_reached**: превышено число соединений
+- **server_unavailable**: сервер недоступен
+- **invalid_tunnel_info**: проверьте параметры туннеля
+- **unknown_message_type**: несовпадение протокола или ошибка
+
+### Шаги для диагностики
+- Включите подробное логирование (`--verbose`)
+- Проверьте логи relay-сервера
+- Проверьте TLS-сертификаты и CA
+- Убедитесь, что секрет JWT совпадает с сервером
+- Для Keycloak — проверьте realm, client_id и JWKS endpoint
 
 ---
 
-## API & Protocol
+## Критерии приёмки
 
-All messages are JSON, UTF-8 encoded, no compression.
+- [x] TLS 1.3, строгие шифры
+- [x] JWT-аутентификация с проверкой claim
+- [x] Управление туннелями (создание, валидация, прокси)
+- [x] Heartbeat и контроль соединения
+- [x] Ограничение скорости и повторы
+- [x] Полная обработка ошибок
+- [x] Логирование и аудит
+- [x] Конфигурируемость через YAML, env, CLI
 
-### Example: Hello
+---
+
+## API и протокол
+
+Все сообщения — JSON, UTF-8, без сжатия.
+
+### Пример: Hello
 ```json
 {"type": "hello", "version": "1.0", "features": ["tls", "heartbeat", "tunnel_info"]}
 ```
 
-### Example: Auth
+### Пример: Auth
 ```json
 {"type": "auth", "token": "<jwt>"}
 ```
 
-### Example: Tunnel
+### Пример: Tunnel
 ```json
 {"type": "tunnel_info", "tunnel_id": "tunnel_001", "local_port": 3389, "remote_host": "192.168.1.100", "remote_port": 3389}
 ```
 
-### Example: Heartbeat
+### Пример: Heartbeat
 ```json
 {"type": "heartbeat"}
 ```
 
-### Example: Error
+### Пример: Ошибка
 ```json
-{"type": "error", "code": "rate_limit_exceeded", "message": "Rate limit exceeded for user"}
+{"type": "error", "code": "rate_limit_exceeded", "message": "Превышен лимит запросов для пользователя"}
 ```
 
 ---
 
-## Testing
+## Тестирование
 
-- Unit tests: authentication, tunnel, error handling, rate limiting
-- Integration: full connection cycle, TLS handshake, real relay server
-- Security: certificate validation, JWT validation, penetration testing
+- Юнит-тесты: аутентификация, туннели, обработка ошибок, ограничение скорости
+- Интеграция: полный цикл соединения, TLS, реальный relay-сервер
+- Безопасность: проверка сертификатов, JWT, пентесты
 
 ---
 
-## Deployment & Support
+## Развёртывание и поддержка
 
-- See README for build and deployment instructions
-- For issues, use the GitHub issue tracker
-- For security concerns, contact the security contact listed in the README 
+- См. основной README для инструкций по сборке и развёртыванию
+- Для вопросов используйте GitHub issues
+- По вопросам безопасности — контакты в основном README 
