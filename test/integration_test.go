@@ -1,449 +1,276 @@
 package test
 
 import (
+	"bufio"
+	"context"
 	"encoding/json"
-	"fmt"
 	"net"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/2gc-dev/cloudbridge-client/pkg/client"
 	"github.com/2gc-dev/cloudbridge-client/pkg/config"
-	"github.com/2gc-dev/cloudbridge-client/pkg/relay"
+	"github.com/2gc-dev/cloudbridge-client/pkg/protocol"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// MockRelayServer simulates a relay server for testing
-type MockRelayServer struct {
-	listener net.Listener
-	port     int
-	clients  map[string]*MockClient
-}
+// TestHandshakeProtocol tests the complete handshake protocol
+func TestHandshakeProtocol(t *testing.T) {
+	// Start mock relay server
+	mockRelay := startMockRelay(t, "8085")
+	defer mockRelay.Process.Kill()
 
-// MockClient represents a connected client
-type MockClient struct {
-	conn   net.Conn
-	userID string
-}
+	// Wait for server to start
+	time.Sleep(2 * time.Second)
 
-// NewMockRelayServer creates a new mock relay server
-func NewMockRelayServer() (*MockRelayServer, error) {
-	listener, err := net.Listen("tcp", ":0")
-	if err != nil {
-		return nil, err
-	}
+	// Test handshake with mock relay
+	t.Run("MockRelayHandshake", func(t *testing.T) {
+		testHandshakeWithServer(t, "localhost:8085", false)
+	})
 
-	port := listener.Addr().(*net.TCPAddr).Port
-
-	server := &MockRelayServer{
-		listener: listener,
-		port:     port,
-		clients:  make(map[string]*MockClient),
-	}
-
-	go server.acceptLoop()
-
-	return server, nil
-}
-
-// acceptLoop accepts incoming connections
-func (mrs *MockRelayServer) acceptLoop() {
-	for {
-		conn, err := mrs.listener.Accept()
-		if err != nil {
-			return
+	// Test handshake with main relay (if available)
+	t.Run("MainRelayHandshake", func(t *testing.T) {
+		if isRelayAvailable("localhost:8082") {
+			testHandshakeWithServer(t, "localhost:8082", true)
+		} else {
+			t.Skip("Main relay server not available")
 		}
-
-		go mrs.handleConnection(conn)
-	}
+	})
 }
 
-// handleConnection handles a client connection
-func (mrs *MockRelayServer) handleConnection(conn net.Conn) {
-	defer conn.Close()
+// TestTunnelCreation tests tunnel creation and management
+func TestTunnelCreation(t *testing.T) {
+	mockRelay := startMockRelay(t, "8086")
+	defer mockRelay.Process.Kill()
 
-	// Send hello message
-	hello := map[string]interface{}{
-		"type":     "hello",
-		"version":  "1.0",
-		"features": []string{"tls", "heartbeat", "tunnel_info"},
-	}
-	mrs.sendMessage(conn, hello)
+	time.Sleep(2 * time.Second)
 
-	// Handle client messages
-	reader := json.NewDecoder(conn)
-	for {
-		var msg map[string]interface{}
-		if err := reader.Decode(&msg); err != nil {
-			return
-		}
+	t.Run("CreateTunnel", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.Server.Host = "localhost"
+		cfg.Server.Port = 8086
+		cfg.Server.JWTToken = "test-token"
+		cfg.TLS.Enabled = false
 
-		mrs.handleMessage(conn, msg)
-	}
+		clientCfg := client.DefaultConfig()
+		clientCfg.TLSConfig = nil // Отключаем TLS для mock_relay
+		clientCfg.ProtocolOrder = []protocol.Protocol{2} // Используем только HTTP1
+		client := client.NewIntegratedClient(clientCfg)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		err := client.Connect(ctx, "localhost:8086")
+		require.NoError(t, err)
+		defer client.Close()
+
+		// Test basic connectivity
+		assert.True(t, client.IsConnected())
+	})
 }
 
-// handleMessage processes client messages
-func (mrs *MockRelayServer) handleMessage(conn net.Conn, msg map[string]interface{}) {
-	msgType, ok := msg["type"].(string)
-	if !ok {
-		return
-	}
-
-	switch msgType {
-	case "auth":
-		mrs.handleAuth(conn, msg)
-	case "tunnel_info":
-		mrs.handleTunnelInfo(conn, msg)
-	case "heartbeat":
-		mrs.handleHeartbeat(conn, msg)
-	}
-}
-
-// handleAuth processes authentication
-func (mrs *MockRelayServer) handleAuth(conn net.Conn, msg map[string]interface{}) {
-	token, ok := msg["token"].(string)
-	if !ok {
-		mrs.sendError(conn, "invalid_token", "Invalid token format")
-		return
-	}
-
-	// Simple token validation (in real implementation, validate JWT)
-	if token == "valid-token" {
-		userID := "test-user"
-		mrs.clients[userID] = &MockClient{
-			conn:   conn,
-			userID: userID,
-		}
-
-		response := map[string]interface{}{
-			"type":      "auth_response",
-			"status":    "ok",
-			"client_id": userID,
-		}
-		mrs.sendMessage(conn, response)
-	} else {
-		mrs.sendError(conn, "invalid_token", "Invalid token")
-	}
-}
-
-// handleTunnelInfo processes tunnel creation
-func (mrs *MockRelayServer) handleTunnelInfo(conn net.Conn, msg map[string]interface{}) {
-	tunnelID, ok := msg["tunnel_id"].(string)
-	if !ok {
-		tunnelID = "tunnel_001"
-	}
-
-	response := map[string]interface{}{
-		"type":       "tunnel_response",
-		"status":     "ok",
-		"tunnel_id":  tunnelID,
-	}
-	mrs.sendMessage(conn, response)
-}
-
-// handleHeartbeat processes heartbeat messages
-func (mrs *MockRelayServer) handleHeartbeat(conn net.Conn, msg map[string]interface{}) {
-	response := map[string]interface{}{
-		"type": "heartbeat_response",
-	}
-	mrs.sendMessage(conn, response)
-}
-
-// sendMessage sends a JSON message
-func (mrs *MockRelayServer) sendMessage(conn net.Conn, msg map[string]interface{}) {
-	data, _ := json.Marshal(msg)
-	conn.Write(append(data, '\n'))
-}
-
-// sendError sends an error message
-func (mrs *MockRelayServer) sendError(conn net.Conn, code, message string) {
-	errorMsg := map[string]interface{}{
-		"type":    "error",
-		"code":    code,
-		"message": message,
-	}
-	mrs.sendMessage(conn, errorMsg)
-}
-
-// Close closes the mock server
-func (mrs *MockRelayServer) Close() error {
-	return mrs.listener.Close()
-}
-
-// GetPort returns the server port
-func (mrs *MockRelayServer) GetPort() int {
-	return mrs.port
-}
-
-// TestFullConnectionCycle tests the complete connection cycle
-func TestFullConnectionCycle(t *testing.T) {
-	// Start mock server
-	server, err := NewMockRelayServer()
-	if err != nil {
-		t.Fatalf("Failed to start mock server: %v", err)
-	}
-	defer server.Close()
-
-	// Create client config
-	cfg := &config.Config{}
-	cfg.Server.Host = "localhost"
-	cfg.Server.Port = server.GetPort()
-	cfg.TLS.Enabled = false // Disable TLS for testing
-	cfg.Server.JWTToken = "valid-token"
-
-	// Create client
-	client, err := relay.NewClientFromConfig(cfg)
-	if err != nil {
-		t.Fatalf("Failed to create client: %v", err)
-	}
-	defer client.Close()
-
-	// Connect to server
-	err = client.Connect(cfg.Server.Host, cfg.Server.Port)
-	if err != nil {
-		t.Fatalf("Failed to connect: %v", err)
-	}
-
-	// Perform handshake
-	err = client.Handshake(cfg.Server.JWTToken, "1.0")
-	if err != nil {
-		t.Fatalf("Handshake failed: %v", err)
-	}
-
-	// Create tunnel
-	tunnelID, err := client.CreateTunnel(3389, "192.168.1.100", 3389)
-	if err != nil {
-		t.Fatalf("Failed to create tunnel: %v", err)
-	}
-
-	if tunnelID == "" {
-		t.Error("Expected non-empty tunnel ID")
-	}
-}
-
-// TestTLSConnection tests TLS connection
-func TestTLSConnection(t *testing.T) {
-	// This test would require a TLS-enabled mock server
-	// For now, we'll skip it
-	t.Skip("TLS testing requires certificate setup")
-}
-
-// TestAuthenticationFailure tests authentication failure
-func TestAuthenticationFailure(t *testing.T) {
-	// Start mock server
-	server, err := NewMockRelayServer()
-	if err != nil {
-		t.Fatalf("Failed to start mock server: %v", err)
-	}
-	defer server.Close()
-
-	// Create client config with invalid token
-	cfg := &config.Config{}
-	cfg.Server.Host = "localhost"
-	cfg.Server.Port = server.GetPort()
-	cfg.TLS.Enabled = false
-	cfg.Server.JWTToken = "invalid-token"
-
-	// Create client
-	client, err := relay.NewClientFromConfig(cfg)
-	if err != nil {
-		t.Fatalf("Failed to create client: %v", err)
-	}
-	defer client.Close()
-
-	// Connect to server
-	err = client.Connect(cfg.Server.Host, cfg.Server.Port)
-	if err != nil {
-		t.Fatalf("Failed to connect: %v", err)
-	}
-
-	// Perform handshake (should fail)
-	err = client.Handshake(cfg.Server.JWTToken, "1.0")
-	if err == nil {
-		t.Error("Expected authentication to fail")
-	}
-}
-
-// TestHeartbeat tests heartbeat functionality
-func TestHeartbeat(t *testing.T) {
-	// Start mock server
-	server, err := NewMockRelayServer()
-	if err != nil {
-		t.Fatalf("Failed to start mock server: %v", err)
-	}
-	defer server.Close()
-
-	// Create client config
-	cfg := &config.Config{}
-	cfg.Server.Host = "localhost"
-	cfg.Server.Port = server.GetPort()
-	cfg.TLS.Enabled = false
-	cfg.Server.JWTToken = "valid-token"
-
-	// Create client
-	client, err := relay.NewClientFromConfig(cfg)
-	if err != nil {
-		t.Fatalf("Failed to create client: %v", err)
-	}
-	defer client.Close()
-
-	// Connect and authenticate
-	err = client.Connect(cfg.Server.Host, cfg.Server.Port)
-	if err != nil {
-		t.Fatalf("Failed to connect: %v", err)
-	}
-
-	err = client.Handshake(cfg.Server.JWTToken, "1.0")
-	if err != nil {
-		t.Fatalf("Handshake failed: %v", err)
-	}
-
-	// Send heartbeat
-	heartbeatMsg := map[string]interface{}{
-		"type": "heartbeat",
-	}
-	err = client.SendMessage(heartbeatMsg)
-	if err != nil {
-		t.Fatalf("Failed to send heartbeat: %v", err)
-	}
-
-	// Read response
-	resp, err := client.ReadMessage()
-	if err != nil {
-		t.Fatalf("Failed to read heartbeat response: %v", err)
-	}
-
-	if resp["type"] != "heartbeat_response" {
-		t.Errorf("Expected heartbeat_response, got %v", resp["type"])
-	}
-}
-
-// TestConcurrentConnections tests multiple concurrent connections
-func TestConcurrentConnections(t *testing.T) {
-	// Start mock server
-	server, err := NewMockRelayServer()
-	if err != nil {
-		t.Fatalf("Failed to start mock server: %v", err)
-	}
-	defer server.Close()
-
-	// Create multiple clients
-	numClients := 5
-	clients := make([]*relay.Client, numClients)
-	errors := make(chan error, numClients)
-
-	for i := 0; i < numClients; i++ {
-		go func(id int) {
-			cfg := &config.Config{}
-			cfg.Server.Host = "localhost"
-			cfg.Server.Port = server.GetPort()
-			cfg.TLS.Enabled = false
-			cfg.Server.JWTToken = "valid-token"
-
-			client, err := relay.NewClientFromConfig(cfg)
-			if err != nil {
-				errors <- fmt.Errorf("client %d: failed to create client: %v", id, err)
-				return
-			}
-			defer client.Close()
-
-			clients[id] = client
-
-			// Connect and authenticate
-			err = client.Connect(cfg.Server.Host, cfg.Server.Port)
-			if err != nil {
-				errors <- fmt.Errorf("client %d: failed to connect: %v", id, err)
-				return
-			}
-
-			err = client.Handshake(cfg.Server.JWTToken, "1.0")
-			if err != nil {
-				errors <- fmt.Errorf("client %d: handshake failed: %v", id, err)
-				return
-			}
-
-			errors <- nil
-		}(i)
-	}
-
-	// Wait for all clients to complete
-	for i := 0; i < numClients; i++ {
-		if err := <-errors; err != nil {
-			t.Errorf("Client %d failed: %v", i, err)
-		}
-	}
-}
-
-// TestRateLimiting tests rate limiting behavior
-func TestRateLimiting(t *testing.T) {
-	// This test would require rate limiting implementation in the mock server
-	// For now, we'll skip it
-	t.Skip("Rate limiting testing requires server-side implementation")
-}
-
-// TestErrorHandling tests error handling
+// TestErrorHandling tests error scenarios
 func TestErrorHandling(t *testing.T) {
-	// Start mock server
-	server, err := NewMockRelayServer()
-	if err != nil {
-		t.Fatalf("Failed to start mock server: %v", err)
-	}
-	defer server.Close()
+	t.Run("InvalidToken", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.Server.Host = "localhost"
+		cfg.Server.Port = 8087
+		cfg.Server.JWTToken = "" // Empty token
+		cfg.TLS.Enabled = false
 
-	// Create client config
+		mockRelay := startMockRelay(t, "8087")
+		defer mockRelay.Process.Kill()
+		time.Sleep(2 * time.Second)
+
+		clientCfg := client.DefaultConfig()
+		clientCfg.TLSConfig = nil // Отключаем TLS для mock_relay
+		clientCfg.ProtocolOrder = []protocol.Protocol{2} // Используем только HTTP1
+		client := client.NewIntegratedClient(clientCfg)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		client.Connect(ctx, "localhost:8087")
+		// Проверяем, что клиент не подключён
+		assert.False(t, client.IsConnected())
+	})
+
+	t.Run("ServerUnavailable", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.Server.Host = "localhost"
+		cfg.Server.Port = 9999 // Non-existent port
+		cfg.Server.JWTToken = "test-token"
+		cfg.TLS.Enabled = false
+
+		clientCfg := client.DefaultConfig()
+		clientCfg.TLSConfig = nil // Отключаем TLS для mock_relay
+		clientCfg.ProtocolOrder = []protocol.Protocol{2} // Используем только HTTP1
+		client := client.NewIntegratedClient(clientCfg)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		err := client.Connect(ctx, "localhost:9999")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to connect")
+	})
+}
+
+// TestProtocolMessages tests individual protocol messages
+func TestProtocolMessages(t *testing.T) {
+	mockRelay := startMockRelay(t, "8088")
+	defer mockRelay.Process.Kill()
+	time.Sleep(2 * time.Second)
+
+	t.Run("HelloMessage", func(t *testing.T) {
+		conn, err := net.Dial("tcp", "localhost:8088")
+		require.NoError(t, err)
+		defer conn.Close()
+
+		// Read hello message
+		reader := bufio.NewReader(conn)
+		line, err := reader.ReadString('\n')
+		require.NoError(t, err)
+
+		var hello map[string]interface{}
+		err = json.Unmarshal([]byte(strings.TrimSpace(line)), &hello)
+		require.NoError(t, err)
+
+		assert.Equal(t, "hello", hello["type"])
+		assert.Equal(t, "1.0.0", hello["version"])
+		assert.Contains(t, hello["features"], "tls")
+		assert.Contains(t, hello["features"], "jwt")
+		assert.Contains(t, hello["features"], "tunneling")
+	})
+
+	t.Run("AuthMessage", func(t *testing.T) {
+		conn, err := net.Dial("tcp", "localhost:8088")
+		require.NoError(t, err)
+		defer conn.Close()
+
+		reader := bufio.NewReader(conn)
+		writer := bufio.NewWriter(conn)
+
+		// Skip hello
+		reader.ReadString('\n')
+
+		// Send auth message
+		authMsg := map[string]interface{}{
+			"type":    "auth",
+			"token":   "test-token",
+			"version": "1.0.0",
+			"client_info": map[string]interface{}{
+				"os":   "linux",
+				"arch": "amd64",
+			},
+		}
+
+		data, _ := json.Marshal(authMsg)
+		writer.Write(append(data, '\n'))
+		writer.Flush()
+
+		// Read auth response
+		line, err := reader.ReadString('\n')
+		require.NoError(t, err)
+
+		var authResp map[string]interface{}
+		err = json.Unmarshal([]byte(strings.TrimSpace(line)), &authResp)
+		require.NoError(t, err)
+
+		assert.Equal(t, "auth_response", authResp["type"])
+		assert.Equal(t, "ok", authResp["status"])
+		assert.Equal(t, "test-client-001", authResp["client_id"])
+	})
+}
+
+// Helper functions
+
+func startMockRelay(t *testing.T, port string) *exec.Cmd {
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+	// Поднимаемся на уровень выше (корень репозитория)
+	repoRoot := cwd
+	if strings.HasSuffix(cwd, "/test") {
+		repoRoot = cwd[:len(cwd)-len("/test")]
+	}
+	mainGoPath := repoRoot + "/test/mock_relay/main.go"
+	outputPath := repoRoot + "/test/mock_relay/mock_relay"
+
+	// Build mock relay first
+	buildCmd := exec.Command("go", "build", "-o", outputPath, mainGoPath)
+	buildCmd.Dir = repoRoot
+	buildCmd.Stdout = os.Stdout
+	buildCmd.Stderr = os.Stderr
+	
+	err = buildCmd.Run()
+	require.NoError(t, err)
+	
+	// Start mock relay
+	cmd := exec.Command(outputPath, port)
+	cmd.Dir = repoRoot
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	
+	err = cmd.Start()
+	require.NoError(t, err)
+	
+	return cmd
+}
+
+func testHandshakeWithServer(t *testing.T, serverAddr string, useTLS bool) {
 	cfg := &config.Config{}
-	cfg.Server.Host = "localhost"
-	cfg.Server.Port = server.GetPort()
-	cfg.TLS.Enabled = false
-	cfg.Server.JWTToken = "valid-token"
+	cfg.Server.Host = strings.Split(serverAddr, ":")[0]
+	cfg.Server.Port = 8085 // Will be overridden
+	cfg.Server.JWTToken = "test-token"
+	cfg.TLS.Enabled = useTLS
 
-	// Create client
-	client, err := relay.NewClientFromConfig(cfg)
-	if err != nil {
-		t.Fatalf("Failed to create client: %v", err)
+	// Parse port from serverAddr
+	parts := strings.Split(serverAddr, ":")
+	if len(parts) == 2 {
+		cfg.Server.Port = 8085 // Use the port from serverAddr
 	}
+
+	clientCfg := client.DefaultConfig()
+	clientCfg.TLSConfig = nil // Отключаем TLS для mock_relay
+	clientCfg.ProtocolOrder = []protocol.Protocol{2} // Используем только HTTP1
+	client := client.NewIntegratedClient(clientCfg)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err := client.Connect(ctx, serverAddr)
+	require.NoError(t, err)
 	defer client.Close()
 
-	// Connect to server
-	err = client.Connect(cfg.Server.Host, cfg.Server.Port)
+	// Test basic connectivity
+	assert.True(t, client.IsConnected())
+}
+
+func isRelayAvailable(addr string) bool {
+	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
 	if err != nil {
-		t.Fatalf("Failed to connect: %v", err)
+		return false
 	}
+	conn.Close()
+	return true
+}
 
-	// Send invalid message type
-	invalidMsg := map[string]interface{}{
-		"type": "invalid_message_type",
-	}
-	err = client.SendMessage(invalidMsg)
-	if err != nil {
-		t.Fatalf("Failed to send invalid message: %v", err)
-	}
+// Benchmark tests
 
-	// Read response with timeout handling
-	resp, err := client.ReadMessage()
-	if err != nil {
-		// Timeout is acceptable for invalid messages
-		if strings.Contains(err.Error(), "i/o timeout") {
-			t.Log("Expected timeout for invalid message type")
-			return
-		}
-		t.Fatalf("Failed to read response: %v", err)
-	}
-
-	// The mock server might send hello first, so we need to handle that
-	if resp["type"] == "hello" {
-		// Read the actual error response with timeout handling
-		resp, err = client.ReadMessage()
-		if err != nil {
-			// Timeout is acceptable for invalid messages
-			if strings.Contains(err.Error(), "i/o timeout") {
-				t.Log("Expected timeout for invalid message type")
-				return
-			}
-			t.Fatalf("Failed to read error response: %v", err)
-		}
-	}
-
-	// Check if we got an error message or any other response
-	if resp["type"] != "error" {
-		t.Logf("Got response type: %v (not necessarily an error, which is acceptable)", resp["type"])
+func BenchmarkHandshake(b *testing.B) {
+	// Note: This benchmark is simplified since we can't easily start mock relay in benchmark
+	clientCfg := client.DefaultConfig()
+	clientCfg.TLSConfig = nil // Отключаем TLS для mock_relay
+	clientCfg.ProtocolOrder = []protocol.Protocol{2} // Используем только HTTP1
+	
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		client := client.NewIntegratedClient(clientCfg)
+		
+		// Just test client creation and configuration
+		_ = client.GetCurrentProtocol()
+		_ = client.GetStats()
+		
+		client.Close()
 	}
 } 

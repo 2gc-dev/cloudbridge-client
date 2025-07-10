@@ -1,32 +1,26 @@
-relay:
-  host: "edge.2gc.ru"
-  port: 8080
-  timeout: "30s"
-  tls:
-    enabled: true
-    min_version: "1.3"
-    verify_cert: true
-    ca_cert: ""
-    client_cert: ""
-    client_key: ""
-    server_name: ""
+server:
+  host: "localhost"
+  port: 8084
+  jwt_token: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0LWNsaWVudCIsImF1ZCI6InJlbGF5LWNsaWVudCIsImlzcyI6Imh0dHBzOi8vZWRnZS4yZ2MucnUvcmVhbG1zL2Nsb3VkYnJpZGdlIiwiZXhwIjoxNzUyMDIxODMyLCJpYXQiOjE3NTIwMTgyMzJ9.GsCE5Li-mg819Fp2SMoK4G4vQG2VQLCh0hmiUKLbiPc"
+
+tls:
+  enabled: false
+  cert_file: ""
+  key_file: ""
+  ca_file: ""
 
 auth:
-  type: "jwt"
-  secret: "your-jwt-secret-here"
-  keycloak:
-    enabled: false
-    server_url: "https://keycloak.example.com"
-    realm: "cloudbridge"
-    client_id: "relay-client"
+  secret: ""
 
-rate_limiting:
-  enabled: true
+tunnel:
+  local_port: 3389
+  reconnect_delay: 5
   max_retries: 3
-  backoff_multiplier: 2.0
-  max_backoff: "30s"
 
 logging:
-  level: "info"
-  format: "json"
-  output: "stdout" 
+  level: "debug"
+  file: "/var/log/cloudbridge-client/client.log"
+  max_size: 100
+  max_backups: 3
+  max_age: 28
+  compress: true 

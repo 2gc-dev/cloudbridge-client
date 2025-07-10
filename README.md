@@ -1,258 +1,440 @@
-# CloudBridge Relay Client
+# CloudBridge Client
 
-**CloudBridge Relay Client** — это безопасный кроссплатформенный клиент на Go для работы с сервисом CloudBridge Relay. Клиент поддерживает протокол с TLS 1.3, JWT-аутентификацию, обработку ошибок, управление туннелями и системным сервисом.
+[![Go Report Card](https://goreportcard.com/badge/github.com/2gc-dev/cloudbridge-client)](https://goreportcard.com/report/github.com/2gc-dev/cloudbridge-client)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/2gc-dev/cloudbridge-client)](https://go.dev/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](https://github.com/2gc-dev/cloudbridge-client/actions)
 
-## Возможности
-- Поддержка TLS 1.3 и безопасных шифров
-- JWT-аутентификация (HMAC и RSA)
-- Интеграция с Keycloak (OpenID Connect)
-- Кроссплатформенность: Windows, Linux, macOS (x86_64, ARM64)
-- Ограничение скорости с экспоненциальным backoff
-- Мониторинг соединения (heartbeat)
-- Управление туннелями
-- Гибкая конфигурация через YAML и переменные окружения
-- Установка как системный сервис
-- Метрики Prometheus и health-check
+Go-клиент для подключения к CloudBridge Relay серверу с поддержкой множественных протоколов, аутентификации и создания туннелей.
 
-## Установка
+## 🚀 Возможности
 
-### Через Go
+- **Множественные протоколы**: QUIC, HTTP/2, HTTP/1.1
+- **Аутентификация**: JWT токены с поддержкой Keycloak и Django
+- **Туннелирование**: Создание и управление TCP туннелями
+- **Отказоустойчивость**: Circuit breaker, rate limiting, переподключение
+- **Мониторинг**: Prometheus метрики и структурированное логирование
+- **Тестирование**: Unit, интеграционные тесты и бенчмарки
+- **Документация**: Полная техническая документация и руководства
+
+## 📋 Требования
+
+- Go 1.23+
+- Docker (опционально)
+- Make
+- golangci-lint (для разработки)
+
+## 🛠 Установка
+
+### Из исходного кода
+
 ```bash
-go install github.com/2gc-dev/cloudbridge-client/cmd/cloudbridge-client@latest
-```
-
-### Сборка из исходников
-```bash
+# Клонирование репозитория
 git clone https://github.com/2gc-dev/cloudbridge-client.git
 cd cloudbridge-client
-go build -o cloudbridge-client ./cmd/cloudbridge-client
+
+# Зависимости
+go mod download
+go mod tidy
+
+# Сборка
+make build-all
+
+# Проверка версии
+./cloudbridge-client --version
 ```
 
-## Быстрый старт
+### Docker
 
-### Простой запуск
 ```bash
-cloudbridge-client --token "ваш-jwt-токен"
+# Сборка образа
+docker build -t cloudbridge-client .
+
+# Запуск контейнера
+docker run -d \
+  --name cloudbridge-client \
+  -v $(pwd)/config.yaml:/app/config.yaml \
+  -v $(pwd)/logs:/var/log/cloudbridge-client \
+  -p 9090:9090 \
+  cloudbridge-client
 ```
 
-### С использованием конфигурационного файла
+### Systemd
+
 ```bash
-cloudbridge-client --config config.yaml --token "ваш-jwt-токен"
+# Копирование файлов
+sudo cp cloudbridge-client /usr/local/bin/
+sudo mkdir -p /etc/cloudbridge-client
+sudo cp config.yaml /etc/cloudbridge-client/
+sudo cp deploy/cloudbridge-client.service /etc/systemd/system/
+
+# Включение и запуск сервиса
+sudo systemctl daemon-reload
+sudo systemctl enable cloudbridge-client
+sudo systemctl start cloudbridge-client
 ```
 
-### Кастомный туннель
+## ⚙️ Конфигурация
+
+Создайте файл `config.yaml`:
+
+```yaml
+server:
+  host: "relay.example.com"
+  port: 8082
+  jwt_token: "your-jwt-token-here"
+
+tls:
+  enabled: false  # Включите для production
+
+tunnel:
+  local_port: 3389
+  reconnect_delay: 5
+  max_retries: 3
+
+logging:
+  level: "info"
+  file: "/var/log/cloudbridge-client/client.log"
+
+metrics:
+  enabled: true
+  port: 9090
+  path: "/metrics"
+```
+
+## 🚀 Использование
+
+### Базовый запуск
+
 ```bash
-cloudbridge-client \
-  --token "ваш-jwt-токен" \
-  --tunnel-id "мой-туннель" \
+# Запуск клиента
+./cloudbridge-client --config config.yaml
+
+# С параметрами командной строки
+./cloudbridge-client \
+  --config config.yaml \
+  --token "your-jwt-token" \
   --local-port 3389 \
   --remote-host "192.168.1.100" \
   --remote-port 3389
 ```
 
-## Конфигурация
+### Программное использование
 
-Клиент поддерживает настройку через YAML-файл и переменные окружения.
+```go
+package main
 
-### Пример config.yaml
-```yaml
-relay:
-  host: "edge.2gc.ru"
-  port: 8080
-  timeout: "30s"
-  tls:
-    enabled: true
-    min_version: "1.3"
-    verify_cert: true
-    ca_cert: "/path/to/ca.pem"
-    client_cert: "/path/to/client.crt"
-    client_key: "/path/to/client.key"
+import (
+    "context"
+    "log"
+    
+    "github.com/2gc-dev/cloudbridge-client/pkg/client"
+    "github.com/2gc-dev/cloudbridge-client/pkg/config"
+)
 
-auth:
-  type: "jwt"
-  secret: "jwt-секрет"
-  keycloak:
-    enabled: false
-    server_url: "https://keycloak.example.com"
-    realm: "cloudbridge"
-    client_id: "relay-client"
-
-rate_limiting:
-  enabled: true
-  max_retries: 3
-  backoff_multiplier: 2.0
-  max_backoff: "30s"
-  window_size: "1m"
-  max_requests: 100
-
-logging:
-  level: "info"
-  format: "json"
-  output: "stdout"
-```
-
-### Переменные окружения
-Любую опцию можно задать через переменные с префиксом `CLOUDBRIDGE_`:
-```bash
-export CLOUDBRIDGE_RELAY_HOST="edge.2gc.ru"
-export CLOUDBRIDGE_RELAY_PORT="8080"
-export CLOUDBRIDGE_AUTH_SECRET="jwt-секрет"
-```
-
-### Ключевые параметры командной строки
-- `--config, -c`: путь к конфигу
-- `--token, -t`: JWT-токен (обязателен)
-- `--tunnel-id, -i`: ID туннеля (по умолчанию: tunnel_001)
-- `--local-port, -l`: локальный порт (по умолчанию: 3389)
-- `--remote-host, -r`: удалённый хост (по умолчанию: 192.168.1.100)
-- `--remote-port, -p`: удалённый порт (по умолчанию: 3389)
-- `--verbose, -v`: подробное логирование
-
-## Управление сервисом
-
-### Установка как системный сервис
-```bash
-# Linux/macOS
-sudo cloudbridge-client service install <jwt-token>
-
-# Windows (от имени администратора)
-cloudbridge-client.exe service install <jwt-token>
-```
-
-### Команды сервиса
-```bash
-cloudbridge-client service status      # Проверить статус
-cloudbridge-client service start       # Запустить сервис
-cloudbridge-client service stop        # Остановить сервис
-cloudbridge-client service restart     # Перезапустить сервис
-cloudbridge-client service uninstall   # Удалить сервис
-```
-
-## Безопасность
-
-### TLS 1.3
-- Минимальная версия TLS 1.3
-- Только безопасные шифры:
-  - TLS_AES_256_GCM_SHA384
-  - TLS_CHACHA20_POLY1305_SHA256
-  - TLS_AES_128_GCM_SHA256
-- Проверка сертификатов
-- Поддержка SNI
-
-### JWT-аутентификация
-- Поддержка HMAC-SHA256 и RSA
-- Проверка срока действия токена
-- Извлечение subject для rate limiting
-
-### Keycloak
-- OpenID Connect
-- Автоматическая загрузка JWKS
-- Проверка ролей
-
-## Ограничение скорости
-- Ограничение по пользователю (по subject JWT)
-- Экспоненциальный backoff
-- Настраиваемое максимальное число попыток
-- Sliding window
-
-## Мониторинг
-
-### Метрики Prometheus
-Доступны по адресу: http://localhost:9090/metrics
-- relay_connections_total — всего соединений
-- relay_connection_duration_seconds — длительность соединений
-- relay_errors_total — количество ошибок по типам
-- relay_active_tunnels — число активных туннелей
-- relay_heartbeat_latency_seconds — задержка heartbeat
-- relay_missed_heartbeats_total — пропущенные heartbeat
-
-### Health-check
-http://localhost:9090/health
-```json
-{
-  "status": "ok",
-  "version": "1.0.0",
-  "uptime": "2h30m15s",
-  "connections_total": 42,
-  "active_tunnels": 3,
-  "errors_total": 0,
-  "missed_heartbeats": 0
+func main() {
+    // Загрузка конфигурации
+    cfg, err := config.Load("config.yaml")
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    // Создание клиента
+    client := client.NewIntegratedClient(cfg)
+    
+    // Подключение
+    ctx := context.Background()
+    err = client.Connect(ctx)
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer client.Close()
+    
+    // Создание туннеля
+    tunnelID, err := client.CreateTunnel(3389, "192.168.1.100", 3389)
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    log.Printf("Туннель создан: %s", tunnelID)
+    
+    // Ожидание
+    select {}
 }
 ```
 
-## Поддерживаемые платформы
-- Windows: x86_64, ARM64
-- Linux: x86_64, ARM64
-- macOS: x86_64, ARM64
-
-## Разработка
-
-### Сборка под разные платформы
-```bash
-GOOS=windows GOARCH=amd64 go build -o cloudbridge-client.exe ./cmd/cloudbridge-client
-GOOS=linux GOARCH=amd64 go build -o cloudbridge-client ./cmd/cloudbridge-client
-GOOS=darwin GOARCH=amd64 go build -o cloudbridge-client ./cmd/cloudbridge-client
-```
+## 🧪 Тестирование
 
 ### Запуск тестов
+
 ```bash
-go test ./...
-# или по пакетам
-go test ./pkg/auth
-go test ./pkg/rate_limiting
-go test ./pkg/relay
+# Все тесты
+make test
+
+# Только unit тесты
+make test-unit
+
+# Интеграционные тесты
+make test-integration
+
+# Тесты с покрытием
+make test-coverage
+
+# Бенчмарки
+make test-benchmark
 ```
 
-## Структура кода
-```
-pkg/
-├── auth/          # Аутентификация
-├── config/        # Конфигурация
-├── errors/        # Обработка ошибок
-├── heartbeat/     # Мониторинг соединения
-├── rate_limiting/ # Ограничение скорости
-├── relay/         # Основной клиент
-├── service/       # Управление сервисом
-└── tunnel/        # Управление туннелями
+### Mock Relay сервер
 
-cmd/
-└── cloudbridge-client/  # Главный исполняемый файл
+```bash
+# Сборка mock relay
+make build-mock
 
-docs/             # Документация
-├── API.md        # Описание протокола
-├── ARCHITECTURE.md # Архитектура
-├── DEPLOYMENT.md # Развёртывание
-├── PERFORMANCE.md # Производительность
-├── SECURITY.md   # Безопасность
-├── TESTING.md    # Тестирование
-└── TROUBLESHOOTING.md # Диагностика
+# Запуск mock relay на порту 8084
+make mock-relay
+
+# Тестирование с mock relay
+go test -v ./test/ -tags=integration
 ```
 
-## Вклад
-1. Сделайте fork репозитория
-2. Создайте ветку (`git checkout -b feature/ваша-фича`)
-3. Зафиксируйте изменения (`git commit -m 'Добавить новую фичу'`)
-4. Отправьте ветку (`git push origin feature/ваша-фича`)
-5. Откройте Pull Request
+### Примеры тестов
 
-## Лицензия
-Проект распространяется под лицензией MIT. Подробнее — в файле LICENSE.
+```bash
+# Тест handshake протокола
+go test -v -run TestHandshakeProtocol
 
-## Поддержка
-- Создайте issue на GitHub
-- Изучите документацию в папке `docs/`
-- Посмотрите примеры конфигурации
+# Тест создания туннелей
+go test -v -run TestTunnelCreation
 
-## История изменений
-### v1.0.0
-- Первый релиз
-- Поддержка TLS 1.3
-- JWT-аутентификация
-- Кроссплатформенность
-- Обработка ошибок
-- Ограничение скорости и retry
-- Heartbeat
-- Управление туннелями
-- Управление сервисом
-- Метрики Prometheus
-- Health-check
+# Тест обработки ошибок
+go test -v -run TestErrorHandling
+
+# Бенчмарк подключений
+go test -v -bench=BenchmarkHandshake -benchmem
+```
+
+## 📊 Мониторинг
+
+### Prometheus метрики
+
+```bash
+# Просмотр метрик
+curl http://localhost:9090/metrics
+
+# Основные метрики
+curl http://localhost:9090/metrics | grep relay_connections_total
+curl http://localhost:9090/metrics | grep relay_active_connections
+curl http://localhost:9090/metrics | grep relay_tunnels_created_total
+```
+
+### Логирование
+
+```bash
+# Просмотр логов
+tail -f /var/log/cloudbridge-client/client.log
+
+# Фильтрация по уровню
+grep "ERROR" /var/log/cloudbridge-client/client.log
+grep "auth" /var/log/cloudbridge-client/client.log
+```
+
+## 📚 Документация
+
+### Основная документация
+
+- [Техническая спецификация](docs/TECHNICAL_SPECIFICATION.md) - Подробное описание архитектуры и протоколов
+- [Руководство пользователя](docs/USER_GUIDE.md) - Пошаговые инструкции по использованию
+- [API Reference](docs/API_REFERENCE.md) - Документация по API интерфейсам
+
+### Примеры конфигурации
+
+- [RDP туннель](config/config-rdp.yaml) - Настройка для Remote Desktop
+- [SSH туннель](config/config-ssh.yaml) - Настройка для SSH
+- [Веб-сервер](config/config-web.yaml) - Настройка для веб-приложений
+- [База данных](config/config-db.yaml) - Настройка для баз данных
+
+### Развертывание
+
+- [Docker](docs/DEPLOYMENT.md#docker) - Развертывание в контейнерах
+- [Systemd](docs/DEPLOYMENT.md#systemd) - Развертывание как системный сервис
+- [Kubernetes](docs/DEPLOYMENT.md#kubernetes) - Развертывание в Kubernetes
+
+## 🔧 Разработка
+
+### Настройка среды разработки
+
+```bash
+# Клонирование
+git clone https://github.com/2gc-dev/cloudbridge-client.git
+cd cloudbridge-client
+
+# Зависимости
+go mod download
+go mod tidy
+
+# Линтер
+make lint
+
+# Форматирование кода
+make format
+
+# Тесты
+make test
+```
+
+### Структура проекта
+
+```
+cloudbridge-client/
+├── cmd/                    # Исполняемые файлы
+│   └── cloudbridge-client/
+├── pkg/                    # Основные пакеты
+│   ├── auth/              # Аутентификация
+│   ├── client/            # Основной клиент
+│   ├── config/            # Конфигурация
+│   ├── errors/            # Обработка ошибок
+│   ├── protocol/          # Протоколы связи
+│   ├── relay/             # Relay клиент
+│   ├── tunnel/            # Управление туннелями
+│   └── types/             # Типы данных
+├── test/                  # Тесты
+│   ├── integration_test.go
+│   └── mock_relay/        # Mock relay сервер
+├── config/                # Конфигурационные файлы
+├── docs/                  # Документация
+├── deploy/                # Файлы развертывания
+└── scripts/               # Скрипты
+```
+
+### Команды Make
+
+```bash
+# Сборка
+make build          # Основной клиент
+make build-mock     # Mock relay сервер
+make build-all      # Все компоненты
+
+# Тестирование
+make test           # Все тесты
+make test-unit      # Unit тесты
+make test-integration # Интеграционные тесты
+make test-coverage  # Тесты с покрытием
+make test-benchmark # Бенчмарки
+
+# Качество кода
+make lint           # Линтер
+make lint-fix       # Автоисправление
+make security-check # Проверка безопасности
+make format         # Форматирование
+
+# Документация
+make docs           # Запуск godoc сервера
+make api-docs       # Генерация API документации
+
+# Разработка
+make clean          # Очистка
+make deps           # Зависимости
+make mock-relay     # Запуск mock relay
+make run-client     # Запуск клиента
+
+# Docker
+make docker-build   # Сборка образа
+make docker-test    # Тесты в Docker
+
+# CI/CD
+make ci-test        # Полный набор тестов CI
+make ci-build       # Сборка для CI
+```
+
+## 🐛 Устранение неполадок
+
+### Частые проблемы
+
+#### Ошибка подключения
+```bash
+# Проверка доступности сервера
+telnet relay.example.com 8082
+
+# Проверка DNS
+nslookup relay.example.com
+```
+
+#### Ошибка аутентификации
+```bash
+# Проверка токена
+echo "your-jwt-token" | cut -d'.' -f2 | base64 -d | jq .
+
+# Получение нового токена
+curl -X POST https://edge.2gc.ru/realms/cloudbridge/protocol/openid-connect/token \
+  -d "grant_type=client_credentials" \
+  -d "client_id=relay-client" \
+  -d "client_secret=your-secret"
+```
+
+#### Ошибка создания туннеля
+```bash
+# Проверка удаленного хоста
+ping 192.168.1.100
+
+# Проверка порта
+telnet 192.168.1.100 3389
+```
+
+### Диагностика
+
+```bash
+# Отладочный режим
+./cloudbridge-client --config config.yaml --verbose --log-level debug
+
+# Проверка конфигурации
+./cloudbridge-client --config config.yaml --dry-run
+
+# Сбор информации для отладки
+make debug-info
+```
+
+## 🤝 Вклад в проект
+
+### Отчеты об ошибках
+
+1. Проверьте [существующие issues](https://github.com/2gc-dev/cloudbridge-client/issues)
+2. Создайте новый issue с подробным описанием проблемы
+3. Приложите логи и конфигурацию
+
+### Pull Requests
+
+1. Форкните репозиторий
+2. Создайте ветку для новой функции
+3. Внесите изменения
+4. Добавьте тесты
+5. Обновите документацию
+6. Создайте Pull Request
+
+### Стандарты кода
+
+- Следуйте [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments)
+- Используйте `gofmt` для форматирования
+- Добавляйте комментарии к экспортируемым функциям
+- Покрывайте код тестами
+
+## 📄 Лицензия
+
+Проект распространяется под лицензией MIT. См. файл [LICENSE](LICENSE) для подробностей.
+
+## 📞 Контакты
+
+- **Репозиторий**: https://github.com/2gc-dev/cloudbridge-client
+- **Документация**: https://docs.2gc.ru/cloudbridge-client
+- **Issues**: https://github.com/2gc-dev/cloudbridge-client/issues
+- **Discussions**: https://github.com/2gc-dev/cloudbridge-client/discussions
+
+## 🙏 Благодарности
+
+- [Go Team](https://golang.org/) за отличный язык программирования
+- [Prometheus](https://prometheus.io/) за систему мониторинга
+- [Keycloak](https://www.keycloak.org/) за систему аутентификации
+- Всем контрибьюторам проекта
+
+---
+
+**CloudBridge Client** - Надежное и безопасное туннелирование для ваших приложений.

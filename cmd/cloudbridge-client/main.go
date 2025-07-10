@@ -127,10 +127,12 @@ func main() {
 				}
 			}()
 
-			if err := client.Handshake(cfg.Server.JWTToken, version); err != nil {
-				log.Printf("Handshake failed: %v", err)
-				client.Close()
-				retries++
+			if err := client.Handshake(cfg.Server.JWTToken); err != nil {
+											log.Printf("Handshake failed: %v", err)
+							if err := client.Close(); err != nil {
+								log.Printf("Error closing client: %v", err)
+							}
+							retries++
 				if retries > maxRetries {
 					log.Fatalf("Max reconnect attempts reached. Exiting.")
 				}
@@ -145,9 +147,11 @@ func main() {
 			// Создание туннеля
 			tunnelID, err := client.CreateTunnel(localPort, remoteHost, remotePort)
 			if err != nil {
-				log.Printf("Failed to create tunnel: %v", err)
-				client.Close()
-				retries++
+											log.Printf("Failed to create tunnel: %v", err)
+							if err := client.Close(); err != nil {
+								log.Printf("Error closing client: %v", err)
+							}
+							retries++
 				if retries > maxRetries {
 					log.Fatalf("Max reconnect attempts reached. Exiting.")
 				}
@@ -161,9 +165,11 @@ func main() {
 
 			// Ожидание сигнала завершения
 			<-sigChan
-			log.Println("Shutting down...")
-			client.Close()
-			return
+									log.Println("Shutting down...")
+						if err := client.Close(); err != nil {
+							log.Printf("Error closing client: %v", err)
+						}
+						return
 		}
 	}()
 
@@ -253,7 +259,7 @@ func run(cmd *cobra.Command, args []string) error {
 			retries = 0
 			delay = initialDelaySec
 
-			if err := client.Handshake(cfg.Server.JWTToken, version); err != nil {
+			if err := client.Handshake(cfg.Server.JWTToken); err != nil {
 				log.Printf("Handshake failed: %v", err)
 				client.Close()
 				retries++
@@ -287,9 +293,11 @@ func run(cmd *cobra.Command, args []string) error {
 
 			// Ожидание сигнала завершения
 			<-sigChan
-			log.Println("Shutting down...")
-			client.Close()
-			return
+									log.Println("Shutting down...")
+						if err := client.Close(); err != nil {
+							log.Printf("Error closing client: %v", err)
+						}
+						return
 		}
 	}()
 

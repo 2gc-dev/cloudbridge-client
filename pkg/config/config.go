@@ -41,6 +41,17 @@ type Config struct {
 		MaxAge     int    `yaml:"max_age"`
 		Compress   bool   `yaml:"compress"`
 	} `yaml:"logging"`
+
+	// New fields for v2.0 support
+	Protocol struct {
+		Version string `yaml:"version"`
+		Features []string `yaml:"features"`
+	} `yaml:"protocol"`
+
+	Tenant struct {
+		ID   string `yaml:"id"`
+		Name string `yaml:"name"`
+	} `yaml:"tenant"`
 }
 
 // Save сохраняет конфигурацию в файл
@@ -110,6 +121,11 @@ func LoadConfig(configPath string) (*Config, error) {
 		config.Tunnel.MaxRetries = 3
 	}
 
+	// Set protocol defaults
+	if config.Protocol.Version == "" {
+		config.Protocol.Version = "2.0"
+	}
+
 	return config, nil
 }
 
@@ -139,6 +155,11 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("TLS CA file not found: %s", c.TLS.CAFile)
 			}
 		}
+	}
+
+	// Validate protocol version
+	if c.Protocol.Version != "" && c.Protocol.Version != "1.0.0" && c.Protocol.Version != "2.0" {
+		return fmt.Errorf("unsupported protocol version: %s", c.Protocol.Version)
 	}
 
 	return nil
