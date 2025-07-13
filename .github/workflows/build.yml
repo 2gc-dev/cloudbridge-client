@@ -141,6 +141,21 @@ jobs:
           echo -e "$NOTES" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+      - name: List downloaded artifacts
+        run: |
+          echo "Downloaded artifacts structure:"
+          find artifacts -type f | sort
+          echo ""
+          echo "Looking for cloudbridge-client files:"
+          find artifacts -name "cloudbridge-client-*" | sort
+          echo ""
+          echo "Artifacts directory contents:"
+          ls -la artifacts/
+          for dir in artifacts/*/; do
+            echo "Contents of $dir:"
+            ls -la "$dir" || echo "Directory not found"
+          done
+
       - name: Create auto release
         uses: softprops/action-gh-release@v1
         with:
@@ -148,11 +163,11 @@ jobs:
           name: "Auto Release ${{ steps.version.outputs.version }}"
           body: ${{ steps.release_notes.outputs.release_notes }}
           files: |
-            artifacts/binaries-linux-amd64/build/cloudbridge-client-linux-amd64
-            artifacts/binaries-linux-arm64/build/cloudbridge-client-linux-arm64
-            artifacts/binaries-windows-amd64/build/cloudbridge-client-windows-amd64.exe
-            artifacts/binaries-darwin-amd64/build/cloudbridge-client-darwin-amd64
-            artifacts/binaries-darwin-arm64/build/cloudbridge-client-darwin-arm64
+            artifacts/binaries-linux-amd64/cloudbridge-client-linux-amd64
+            artifacts/binaries-linux-arm64/cloudbridge-client-linux-arm64
+            artifacts/binaries-windows-amd64/cloudbridge-client-windows-amd64.exe
+            artifacts/binaries-darwin-amd64/cloudbridge-client-darwin-amd64
+            artifacts/binaries-darwin-arm64/cloudbridge-client-darwin-arm64
           draft: false
           prerelease: true
         env:
@@ -176,8 +191,18 @@ jobs:
 
       - name: List downloaded artifacts
         run: |
-          echo "Downloaded artifacts:"
-          find artifacts -type f -name "cloudbridge-client-*" | sort
+          echo "Downloaded artifacts structure:"
+          find artifacts -type f | sort
+          echo ""
+          echo "Looking for cloudbridge-client files:"
+          find artifacts -name "cloudbridge-client-*" | sort
+          echo ""
+          echo "Artifacts directory contents:"
+          ls -la artifacts/
+          for dir in artifacts/*/; do
+            echo "Contents of $dir:"
+            ls -la "$dir" || echo "Directory not found"
+          done
 
       - name: Generate release notes
         id: release_notes
@@ -218,11 +243,11 @@ jobs:
           name: "Release ${{ github.ref_name }}"
           body: ${{ steps.release_notes.outputs.release_notes }}
           files: |
-            artifacts/binaries-linux-amd64/build/cloudbridge-client-linux-amd64
-            artifacts/binaries-linux-arm64/build/cloudbridge-client-linux-arm64
-            artifacts/binaries-windows-amd64/build/cloudbridge-client-windows-amd64.exe
-            artifacts/binaries-darwin-amd64/build/cloudbridge-client-darwin-amd64
-            artifacts/binaries-darwin-arm64/build/cloudbridge-client-darwin-arm64
+            artifacts/binaries-linux-amd64/cloudbridge-client-linux-amd64
+            artifacts/binaries-linux-arm64/cloudbridge-client-linux-arm64
+            artifacts/binaries-windows-amd64/cloudbridge-client-windows-amd64.exe
+            artifacts/binaries-darwin-amd64/cloudbridge-client-darwin-amd64
+            artifacts/binaries-darwin-arm64/cloudbridge-client-darwin-arm64
           generate_release_notes: false
           draft: false
           prerelease: false
