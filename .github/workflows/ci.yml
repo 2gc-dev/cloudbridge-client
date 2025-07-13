@@ -57,7 +57,7 @@ jobs:
         
     - name: Run unit tests
       run: |
-        TESTING=true go test -v -short -coverprofile=coverage.out ./...
+        TESTING=true go test -v -short -coverprofile coverage.out ./...
         
     - name: Build components
       run: |
@@ -98,7 +98,7 @@ jobs:
         
     - name: Generate coverage report
       run: |
-        go tool cover -html=coverage.out -o coverage.html
+        go tool cover -html coverage.out -o coverage.html
         
     - name: Upload coverage report
       uses: actions/upload-artifact@v4
