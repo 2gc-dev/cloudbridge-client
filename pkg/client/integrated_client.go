@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -98,7 +99,14 @@ func NewIntegratedClient(config *Config) *IntegratedClient {
 
 	// Initialize metrics if enabled
 	if config.MetricsEnabled {
-		ic.metrics = metrics.NewMetrics(prometheus.DefaultRegisterer)
+		// Use a separate registry for testing to avoid conflicts
+		var registry prometheus.Registerer
+		if os.Getenv("TESTING") == "true" {
+			registry = prometheus.NewRegistry()
+		} else {
+			registry = prometheus.DefaultRegisterer
+		}
+		ic.metrics = metrics.NewMetrics(registry)
 		ic.metrics.SetClientVersion(config.Version)
 	}
 

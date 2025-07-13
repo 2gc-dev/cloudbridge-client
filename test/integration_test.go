@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/2gc-dev/cloudbridge-client/pkg/client"
-	"github.com/2gc-dev/cloudbridge-client/pkg/config"
 	"github.com/2gc-dev/cloudbridge-client/pkg/protocol"
+	"github.com/2gc-dev/cloudbridge-client/pkg/relay"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,15 +29,57 @@ func TestHandshakeProtocol(t *testing.T) {
 
 	// Test handshake with mock relay
 	t.Run("MockRelayHandshake", func(t *testing.T) {
-		testHandshakeWithServer(t, "localhost:8085", false)
+		// Use relay client directly for TCP connection
+		relayClient := relay.NewClient(false, nil)
+		defer relayClient.Close()
+
+		err := relayClient.Connect("localhost", 8085)
+		require.NoError(t, err)
+
+		err = relayClient.Handshake("test-token")
+		require.NoError(t, err)
+
+		assert.True(t, relayClient.IsConnected())
 	})
 
-	// Test handshake with main relay (if available)
+	// Test handshake with main relay server (port 3456)
 	t.Run("MainRelayHandshake", func(t *testing.T) {
-		if isRelayAvailable("localhost:8082") {
-			testHandshakeWithServer(t, "localhost:8082", true)
+		if isRelayAvailable("localhost:3456") {
+			// Use relay client directly for TCP connection to main relay
+			relayClient := relay.NewClient(false, nil) // No TLS for now
+			defer relayClient.Close()
+
+			err := relayClient.Connect("localhost", 3456)
+			require.NoError(t, err)
+
+			err = relayClient.Handshake("test-token")
+			require.NoError(t, err)
+
+			assert.True(t, relayClient.IsConnected())
 		} else {
-			t.Skip("Main relay server not available")
+			t.Skip("Main relay server not available on port 3456")
+		}
+	})
+
+	// Test handshake with relay API (port 8082)
+	t.Run("RelayAPIHandshake", func(t *testing.T) {
+		if isRelayAvailable("localhost:8082") {
+			// Use integrated client for API interaction
+			clientCfg := client.DefaultConfig()
+			clientCfg.TLSConfig = nil
+			clientCfg.ProtocolOrder = []protocol.Protocol{2} // HTTP1
+			client := client.NewIntegratedClient(clientCfg)
+			defer client.Close()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			err := client.Connect(ctx, "localhost:8082")
+			require.NoError(t, err)
+
+			assert.True(t, client.IsConnected())
+		} else {
+			t.Skip("Relay API not available on port 8082")
 		}
 	})
 }
@@ -50,68 +92,51 @@ func TestTunnelCreation(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	t.Run("CreateTunnel", func(t *testing.T) {
-		cfg := &config.Config{}
-		cfg.Server.Host = "localhost"
-		cfg.Server.Port = 8086
-		cfg.Server.JWTToken = "test-token"
-		cfg.TLS.Enabled = false
+		// Use relay client directly for TCP connection
+		relayClient := relay.NewClient(false, nil)
+		defer relayClient.Close()
 
-		clientCfg := client.DefaultConfig()
-		clientCfg.TLSConfig = nil // Отключаем TLS для mock_relay
-		clientCfg.ProtocolOrder = []protocol.Protocol{2} // Используем только HTTP1
-		client := client.NewIntegratedClient(clientCfg)
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		err := client.Connect(ctx, "localhost:8086")
+		err := relayClient.Connect("localhost", 8086)
 		require.NoError(t, err)
-		defer client.Close()
 
-		// Test basic connectivity
-		assert.True(t, client.IsConnected())
+		err = relayClient.Handshake("test-token")
+		require.NoError(t, err)
+
+		// Test tunnel creation
+		tunnelID, err := relayClient.CreateTunnel(3389, "test-server", 3389)
+		require.NoError(t, err)
+		assert.NotEmpty(t, tunnelID)
+
+		assert.True(t, relayClient.IsConnected())
 	})
 }
 
 // TestErrorHandling tests error scenarios
 func TestErrorHandling(t *testing.T) {
 	t.Run("InvalidToken", func(t *testing.T) {
-		cfg := &config.Config{}
-		cfg.Server.Host = "localhost"
-		cfg.Server.Port = 8087
-		cfg.Server.JWTToken = "" // Empty token
-		cfg.TLS.Enabled = false
-
 		mockRelay := startMockRelay(t, "8087")
 		defer mockRelay.Process.Kill()
 		time.Sleep(2 * time.Second)
 
-		clientCfg := client.DefaultConfig()
-		clientCfg.TLSConfig = nil // Отключаем TLS для mock_relay
-		clientCfg.ProtocolOrder = []protocol.Protocol{2} // Используем только HTTP1
-		client := client.NewIntegratedClient(clientCfg)
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
+		// Use relay client directly
+		relayClient := relay.NewClient(false, nil)
+		defer relayClient.Close()
 
-		client.Connect(ctx, "localhost:8087")
-		// Проверяем, что клиент не подключён
-		assert.False(t, client.IsConnected())
+		err := relayClient.Connect("localhost", 8087)
+		require.NoError(t, err)
+
+		// Try to authenticate with empty token
+		err = relayClient.Handshake("")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "authentication failed")
 	})
 
 	t.Run("ServerUnavailable", func(t *testing.T) {
-		cfg := &config.Config{}
-		cfg.Server.Host = "localhost"
-		cfg.Server.Port = 9999 // Non-existent port
-		cfg.Server.JWTToken = "test-token"
-		cfg.TLS.Enabled = false
+		// Use relay client directly
+		relayClient := relay.NewClient(false, nil)
+		defer relayClient.Close()
 
-		clientCfg := client.DefaultConfig()
-		clientCfg.TLSConfig = nil // Отключаем TLS для mock_relay
-		clientCfg.ProtocolOrder = []protocol.Protocol{2} // Используем только HTTP1
-		client := client.NewIntegratedClient(clientCfg)
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		err := client.Connect(ctx, "localhost:9999")
+		err := relayClient.Connect("localhost", 9999)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to connect")
 	})
@@ -179,8 +204,56 @@ func TestProtocolMessages(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Equal(t, "auth_response", authResp["type"])
-		assert.Equal(t, "ok", authResp["status"])
+		assert.Equal(t, "success", authResp["status"])
 		assert.Equal(t, "test-client-001", authResp["client_id"])
+	})
+}
+
+// TestBasicClientFunctionality tests basic client functionality without external dependencies
+func TestBasicClientFunctionality(t *testing.T) {
+	t.Run("RelayClientCreation", func(t *testing.T) {
+		// Test relay client creation
+		relayClient := relay.NewClient(false, nil)
+		assert.NotNil(t, relayClient)
+		assert.Equal(t, "2.0", relayClient.GetVersion())
+		assert.Contains(t, relayClient.GetFeatures(), "tls")
+		assert.Contains(t, relayClient.GetFeatures(), "heartbeat")
+		
+		// Test client is not connected initially
+		assert.False(t, relayClient.IsConnected())
+		
+		relayClient.Close()
+	})
+
+	t.Run("IntegratedClientCreation", func(t *testing.T) {
+		// Test integrated client creation
+		clientCfg := client.DefaultConfig()
+		clientCfg.MetricsEnabled = true
+		clientCfg.HealthCheckEnabled = true
+		
+		integratedClient := client.NewIntegratedClient(clientCfg)
+		assert.NotNil(t, integratedClient)
+		assert.Equal(t, "2.0", integratedClient.GetVersion())
+		assert.Contains(t, integratedClient.GetFeatures(), "tls")
+		
+		// Test client is not connected initially
+		assert.False(t, integratedClient.IsConnected())
+		
+		integratedClient.Close()
+	})
+
+	t.Run("ProtocolEngine", func(t *testing.T) {
+		// Test protocol engine functionality
+		engine := protocol.NewProtocolEngine()
+		assert.NotNil(t, engine)
+		
+		// Test protocol selection
+		optimalProtocol := engine.GetOptimalProtocolForConnection(context.Background(), "localhost:8082")
+		assert.NotNil(t, optimalProtocol)
+		
+		// Test stats
+		stats := engine.GetStats()
+		assert.NotNil(t, stats)
 	})
 }
 
@@ -218,33 +291,7 @@ func startMockRelay(t *testing.T, port string) *exec.Cmd {
 	return cmd
 }
 
-func testHandshakeWithServer(t *testing.T, serverAddr string, useTLS bool) {
-	cfg := &config.Config{}
-	cfg.Server.Host = strings.Split(serverAddr, ":")[0]
-	cfg.Server.Port = 8085 // Will be overridden
-	cfg.Server.JWTToken = "test-token"
-	cfg.TLS.Enabled = useTLS
 
-	// Parse port from serverAddr
-	parts := strings.Split(serverAddr, ":")
-	if len(parts) == 2 {
-		cfg.Server.Port = 8085 // Use the port from serverAddr
-	}
-
-	clientCfg := client.DefaultConfig()
-	clientCfg.TLSConfig = nil // Отключаем TLS для mock_relay
-	clientCfg.ProtocolOrder = []protocol.Protocol{2} // Используем только HTTP1
-	client := client.NewIntegratedClient(clientCfg)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	err := client.Connect(ctx, serverAddr)
-	require.NoError(t, err)
-	defer client.Close()
-
-	// Test basic connectivity
-	assert.True(t, client.IsConnected())
-}
 
 func isRelayAvailable(addr string) bool {
 	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)

@@ -57,7 +57,7 @@ jobs:
         
     - name: Run unit tests
       run: |
-        go test -v -short -coverprofile=coverage.out ./...
+        TESTING=true go test -v -short -coverprofile=coverage.out ./...
         
     - name: Build components
       run: |
@@ -73,8 +73,14 @@ jobs:
         ./mock_relay 8085 &
         sleep 3
         
+        # Check if main services are available
+        echo "Checking service availability..."
+        nc -z localhost 3456 && echo "Main relay server (3456) is available" || echo "Main relay server (3456) is not available"
+        nc -z localhost 8082 && echo "Relay API (8082) is available" || echo "Relay API (8082) is not available"
+        nc -z localhost 8080 && echo "Keycloak (8080) is available" || echo "Keycloak (8080) is not available"
+        
         # Run integration tests
-        go test -v -tags=integration ./test/
+        TESTING=true go test -v -tags=integration ./test/
         
         # Stop mock relay
         pkill -f mock_relay || true

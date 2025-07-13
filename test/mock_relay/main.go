@@ -111,7 +111,7 @@ func handleConnection(conn net.Conn) {
 	// Send auth response
 	authResp := Message{
 		Type:     MessageTypeAuthResponse,
-		Status:   "ok",
+		Status:   "success",
 		ClientID: "test-client-001",
 	}
 

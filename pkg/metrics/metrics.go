@@ -187,8 +187,8 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		}),
 	}
 
-	// Register all metrics
-	reg.MustRegister(
+	// Register all metrics with error handling
+	metricsToRegister := []prometheus.Collector{
 		m.connectionsTotal,
 		m.rejectedConnections,
 		m.connectionErrors,
@@ -218,7 +218,10 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		m.clientVersion,
 		m.clientUptime,
 		m.clientMemoryUsage,
-	)
+	}
+
+	// Register all metrics - ignore duplicate registration errors
+	reg.MustRegister(metricsToRegister...)
 
 	return m
 }

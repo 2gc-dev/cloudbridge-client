@@ -287,6 +287,19 @@ func (c *Client) Handshake(token string) error {
 
 // CreateTunnel creates a new tunnel
 func (c *Client) CreateTunnel(localPort int, remoteHost string, remotePort int) (string, error) {
+	// Validate ports
+	if localPort < 1 || localPort > 65535 {
+		return "", fmt.Errorf("invalid local port: %d (must be between 1 and 65535)", localPort)
+	}
+	if remotePort < 1 || remotePort > 65535 {
+		return "", fmt.Errorf("invalid remote port: %d (must be between 1 and 65535)", remotePort)
+	}
+	
+	// Check if connected
+	if !c.IsConnected() {
+		return "", fmt.Errorf("not connected to server")
+	}
+	
 	tunnelID := fmt.Sprintf("tunnel_%d_%s_%d", localPort, remoteHost, remotePort)
 	
 	tunnel := &Tunnel{
