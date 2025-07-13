@@ -1,3 +1,5 @@
+version: 1
+
 run:
   timeout: 5m
   go: "1.23"
@@ -24,19 +26,11 @@ linters:
     - gocritic
     - thelper
     - stylecheck
-    - shadow
     - exhaustive
     - funlen
-    - gocritic
     - gofumpt
-
   disable:
     - depguard  # Отключаем depguard - слишком строгий для нашего проекта
-    - gomnd     # Заменен на mnd
-    - structcheck  # Заменен на unused
-    - varcheck     # Заменен на unused
-    - deadcode     # Заменен на unused
-    - exportloopref # Больше не нужен в Go 1.22+
 
 linters-settings:
   gocyclo:
