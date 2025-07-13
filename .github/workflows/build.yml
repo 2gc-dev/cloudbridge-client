@@ -89,7 +89,76 @@ jobs:
             build/mock_relay-${{ matrix.os }}-${{ matrix.arch }}
           retention-days: 30
 
-  # Создание релиза
+  # Автоматический релиз при push в main
+  auto-release:
+    name: Auto Release
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate version
+        id: version
+        run: |
+          # Получаем количество коммитов с последнего тега
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          # Получаем короткий хеш коммита
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          # Создаем версию в формате 1.0.0+{commit_count}.{short_sha}
+          VERSION="1.0.0+${COMMIT_COUNT}.${SHORT_SHA}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Generated version: ${VERSION}"
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          # Получаем последние коммиты
+          COMMITS=$(git log --oneline -10)
+          NOTES="## 🚀 Автоматический релиз ${VERSION}\n\n"
+          NOTES+="### 📋 Изменения:\n"
+          NOTES+="$(echo "$COMMITS" | sed 's/^/- /')\n\n"
+          NOTES+="### 📦 Собранные бинарники:\n"
+          NOTES+="- Linux AMD64\n"
+          NOTES+="- Linux ARM64\n"
+          NOTES+="- Windows AMD64\n"
+          NOTES+="- macOS AMD64\n"
+          NOTES+="- macOS ARM64\n\n"
+          NOTES+="### 🔗 Ссылки:\n"
+          NOTES+="- [Исходный код](https://github.com/${{ github.repository }})\n"
+          NOTES+="- [Issues](https://github.com/${{ github.repository }}/issues)\n"
+          
+          echo "release_notes<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create auto release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: "Auto Release ${{ steps.version.outputs.version }}"
+          body: ${{ steps.release_notes.outputs.release_notes }}
+          files: |
+            artifacts/binaries-linux-amd64/build/cloudbridge-client-linux-amd64
+            artifacts/binaries-linux-arm64/build/cloudbridge-client-linux-arm64
+            artifacts/binaries-windows-amd64/build/cloudbridge-client-windows-amd64.exe
+            artifacts/binaries-darwin-amd64/build/cloudbridge-client-darwin-amd64
+            artifacts/binaries-darwin-arm64/build/cloudbridge-client-darwin-arm64
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Создание релиза при тегах
   release:
     name: Create Release
     runs-on: ubuntu-latest
@@ -110,17 +179,51 @@ jobs:
           echo "Downloaded artifacts:"
           find artifacts -type f -name "cloudbridge-client-*" | sort
 
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          # Получаем тег
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          
+          # Получаем коммиты с последнего тега
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+          if [ -n "$PREVIOUS_TAG" ]; then
+            COMMITS=$(git log --oneline ${PREVIOUS_TAG}..HEAD)
+          else
+            COMMITS=$(git log --oneline -20)
+          fi
+          
+          NOTES="## 🎉 Релиз ${TAG_NAME}\n\n"
+          NOTES+="### 📋 Изменения:\n"
+          NOTES+="$(echo "$COMMITS" | sed 's/^/- /')\n\n"
+          NOTES+="### 📦 Собранные бинарники:\n"
+          NOTES+="- Linux AMD64\n"
+          NOTES+="- Linux ARM64\n"
+          NOTES+="- Windows AMD64\n"
+          NOTES+="- macOS AMD64\n"
+          NOTES+="- macOS ARM64\n\n"
+          NOTES+="### 🔗 Ссылки:\n"
+          NOTES+="- [Исходный код](https://github.com/${{ github.repository }})\n"
+          NOTES+="- [Issues](https://github.com/${{ github.repository }}/issues)\n"
+          NOTES+="- [Документация](https://github.com/${{ github.repository }}/blob/main/README.md)\n"
+          
+          echo "release_notes<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Create release
         id: create_release
         uses: softprops/action-gh-release@v1
         with:
+          name: "Release ${{ github.ref_name }}"
+          body: ${{ steps.release_notes.outputs.release_notes }}
           files: |
             artifacts/binaries-linux-amd64/build/cloudbridge-client-linux-amd64
             artifacts/binaries-linux-arm64/build/cloudbridge-client-linux-arm64
             artifacts/binaries-windows-amd64/build/cloudbridge-client-windows-amd64.exe
             artifacts/binaries-darwin-amd64/build/cloudbridge-client-darwin-amd64
             artifacts/binaries-darwin-arm64/build/cloudbridge-client-darwin-arm64
-          generate_release_notes: true
+          generate_release_notes: false
           draft: false
           prerelease: false
         env:
