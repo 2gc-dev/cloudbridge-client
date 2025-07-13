@@ -8,7 +8,6 @@ on:
 
 env:
   GO_VERSION: '1.23'
-  CGO_ENABLED: 0
 
 jobs:
   test:
@@ -34,6 +33,7 @@ jobs:
       run: |
         go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
         go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+        go install golang.org/x/vuln/cmd/govulncheck@latest
         
     - name: Run linter
       run: |
@@ -51,6 +51,10 @@ jobs:
       run: |
         make build-all
         
+    - name: Build mock relay
+      run: |
+        go build -o mock_relay ./test/mock_relay
+        
     - name: Run integration tests
       run: |
         # Start mock relay server
@@ -65,7 +69,7 @@ jobs:
         
     - name: Run benchmarks
       run: |
-        go test -v -bench=. -benchmem ./test/
+        go test -v -bench=. -benchmem ./pkg/...
         
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
