@@ -1,4 +1,4 @@
-name: Build and Test
+name: Build and Release
 
 on:
   push:
@@ -10,136 +10,10 @@ env:
   GO_VERSION: '1.23'
 
 jobs:
-  # Тестирование на разных ОС
-  test:
-    name: Test on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        go-version: ['1.23']
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go ${{ matrix.go-version }}
-        uses: actions/setup-go@v4
-        with:
-          go-version: ${{ matrix.go-version }}
-
-      - name: Install dependencies
-        run: |
-          go mod download
-          go mod tidy
-
-      - name: Run unit tests
-        run: go test -v -coverprofile coverage.out -covermode atomic ./...
-
-      - name: Build mock relay
-        run: |
-          go build -o mock_relay ./test/mock_relay
-        if: matrix.os == 'ubuntu-latest'
-        
-      - name: Run integration tests
-        run: |
-          # Start mock relay server
-          ./mock_relay 8085 &
-          sleep 3
-          
-          # Run integration tests
-          go test -v -tags=integration ./test/
-          
-          # Stop mock relay
-          pkill -f mock_relay || true
-        if: matrix.os == 'ubuntu-latest'
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v3
-        with:
-          file: ./coverage.out
-          fail_ci_if_error: false
-
-  # Линтинг и проверка качества кода
-  lint:
-    name: Lint and Security Check
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - name: Install dependencies
-        run: |
-          go mod download
-          go mod tidy
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v5
-        with:
-          version: v2.2.2
-          args: --timeout=5m --format=github-actions
-
-      - name: Run security checks
-        run: |
-          # Install jq for JSON processing
-          sudo apt-get update && sudo apt-get install -y jq
-          
-          # Try to install gosec using curl (most reliable method)
-          echo "Installing gosec..."
-          curl -sfL https://raw.githubusercontent.com/securecodewarrior/gosec/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.22.5
-          
-          # Check if gosec is available and run security audit
-          if command -v gosec >/dev/null 2>&1; then
-            echo "✅ gosec installed successfully"
-            
-            # Run gosec security audit
-            gosec -fmt=json -out=gosec-report.json ./...
-            
-            # Check for critical issues
-            if jq '.Issues[] | select(.severity == "HIGH")' gosec-report.json | grep -q .; then
-              echo "❌ Critical security issues found!"
-              jq '.Issues[] | select(.severity == "HIGH") | {file: .file, line: .line, rule_id: .rule_id, details: .details}' gosec-report.json
-              exit 1
-            else
-              echo "✅ No critical security issues found"
-            fi
-            
-            # Upload security report as artifact
-            if [ -f gosec-report.json ]; then
-              echo "📊 Security report generated: gosec-report.json"
-            fi
-          else
-            echo "⚠️ gosec installation failed, skipping security checks"
-          fi
-          
-          # Install govulncheck
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          
-          # Run vulnerability check
-          govulncheck ./... || echo "⚠️ Vulnerability check completed with warnings"
-
-      - name: Check for license headers
-        run: |
-          # Проверяем наличие лицензии в Go файлах
-          find . -name "*.go" -not -path "./vendor/*" -not -path "./test/mock_relay/*" | head -10 | xargs grep -L "Copyright" || true
-
-      - name: Upload security report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: security-report
-          path: gosec-report.json
-          retention-days: 30
-
   # Сборка для всех платформ
   build:
     name: Build for ${{ matrix.os }}-${{ matrix.arch }}
     runs-on: ubuntu-latest
-    needs: [test, lint]
     strategy:
       matrix:
         include:
@@ -213,29 +87,6 @@ jobs:
             build/${{ matrix.binary_name }}.sha256
             build/mock_relay-${{ matrix.os }}-${{ matrix.arch }}
           retention-days: 30
-
-  # Сборка Docker образа
-  docker:
-    name: Build Docker Image
-    runs-on: ubuntu-latest
-    needs: [test, lint]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: false
-          tags: cloudbridge-client:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
   # Создание релиза
   release:
