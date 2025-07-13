@@ -37,7 +37,7 @@ jobs:
       uses: golangci/golangci-lint-action@v4
       with:
         version: v2.2.2
-        args: --timeout=5m
+        args: --timeout=5m --format=github-actions
         
     - name: Run security checks
       run: |
