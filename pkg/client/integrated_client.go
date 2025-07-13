@@ -199,47 +199,16 @@ func (ic *IntegratedClient) Connect(ctx context.Context, address string) error {
 	optimalProtocol := ic.protocolEngine.GetOptimalProtocolForConnection(ctx, address)
 	
 	// Try the optimal protocol first
-	if err := ic.tryConnect(ctx, address, optimalProtocol); err == nil {
-		ic.currentProtocol = optimalProtocol
-		latency := time.Since(startTime)
-		ic.protocolEngine.RecordSuccess(optimalProtocol, latency)
-		
-		if ic.metrics != nil {
-			ic.metrics.IncConnections()
-			ic.metrics.ObserveProtocolLatency(optimalProtocol.String(), latency)
-			ic.metrics.IncProtocolSuccess(optimalProtocol.String())
-		}
-		
+	if ic.tryProtocol(ctx, address, optimalProtocol, startTime) {
 		return nil
-	} else {
-		// Record failure with reason
-		ic.protocolEngine.RecordFailure(optimalProtocol, err.Error())
-		if ic.metrics != nil {
-			ic.metrics.IncProtocolErrors(optimalProtocol.String())
-		}
 	}
 
 	// If optimal protocol failed, try fallback protocols in order
 	fallbackProtocols := ic.getFallbackProtocols(optimalProtocol)
 	
 	for _, protocol := range fallbackProtocols {
-		if err := ic.tryConnect(ctx, address, protocol); err == nil {
-			ic.currentProtocol = protocol
-			latency := time.Since(startTime)
-			ic.protocolEngine.RecordSuccess(protocol, latency)
-			
-			if ic.metrics != nil {
-				ic.metrics.IncConnections()
-				ic.metrics.ObserveProtocolLatency(protocol.String(), latency)
-				ic.metrics.IncProtocolSuccess(protocol.String())
-			}
-			
+		if ic.tryProtocol(ctx, address, protocol, startTime) {
 			return nil
-		} else {
-			ic.protocolEngine.RecordFailure(protocol, err.Error())
-			if ic.metrics != nil {
-				ic.metrics.IncProtocolErrors(protocol.String())
-			}
 		}
 	}
 
@@ -272,6 +241,33 @@ func (ic *IntegratedClient) getFallbackProtocols(failedProtocol protocol.Protoco
 	
 	// Return all protocols after the failed one
 	return preferredOrder[failedIndex+1:]
+}
+
+// tryProtocol attempts to connect using a specific protocol and records metrics
+func (ic *IntegratedClient) tryProtocol(ctx context.Context, address string, protocol protocol.Protocol, startTime time.Time) bool {
+	if err := ic.tryConnect(ctx, address, protocol); err == nil {
+		ic.currentProtocol = protocol
+		latency := time.Since(startTime)
+		ic.protocolEngine.RecordSuccess(protocol, latency)
+		
+		if ic.metrics != nil {
+			ic.metrics.IncConnections()
+			ic.metrics.ObserveProtocolLatency(protocol.String(), latency)
+			ic.metrics.IncProtocolSuccess(protocol.String())
+		}
+		
+		return true
+	}
+	
+	// Record failure with reason
+	if err := ic.tryConnect(ctx, address, protocol); err != nil {
+		ic.protocolEngine.RecordFailure(protocol, err.Error())
+		if ic.metrics != nil {
+			ic.metrics.IncProtocolErrors(protocol.String())
+		}
+	}
+	
+	return false
 }
 
 // tryConnect attempts to connect using a specific protocol
