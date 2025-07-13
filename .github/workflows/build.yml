@@ -78,10 +78,10 @@ jobs:
           go mod download
           go mod tidy
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v5
         with:
-          version: v1.55.2
-          args: --timeout=5m
+          version: v2.2.2
+          args: --timeout=5m --format=github-actions
 
       - name: Run security checks
         run: |
