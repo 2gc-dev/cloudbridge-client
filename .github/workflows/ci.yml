@@ -36,8 +36,7 @@ jobs:
     - name: Run golangci-lint
       uses: golangci/golangci-lint-action@v4
       with:
-        version: v2.2.2
-        format: github-actions
+        version: v1.55.2
         args: --timeout=5m
         
     - name: Run security checks
