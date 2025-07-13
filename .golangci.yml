@@ -1,18 +1,14 @@
-version: 1
+version: 2
 
 run:
   timeout: 5m
   go: "1.23"
-  modules-download-mode: readonly
 
 linters:
+  default: standard
   enable:
-    - gofmt
-    - goimports
-    - govet
-    - errcheck
-    - gosimple
     - staticcheck
+    - errcheck
     - unused
     - gosec
     - revive
@@ -25,99 +21,102 @@ linters:
     - forbidigo
     - gocritic
     - thelper
-    - stylecheck
     - exhaustive
     - funlen
-    - gofumpt
   disable:
-    - depguard  # Отключаем depguard - слишком строгий для нашего проекта
-
-linters-settings:
-  gocyclo:
-    min-complexity: 20  # Увеличиваем лимит с 15 до 20
-  funlen:
-    lines: 100  # Увеличиваем лимит с 60 до 100
-  goconst:
-    min-len: 3
-    min-occurrences: 3
-  dupl:
-    threshold: 100
-  revive:
+    - depguard
+  settings:
+    gocyclo:
+      min-complexity: 20
+    funlen:
+      lines: 100
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    dupl:
+      threshold: 100
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: var-naming
+          disabled: true
+        - name: unused-parameter
+          disabled: true
+        - name: context-as-argument
+          disabled: true
+        - name: redefines-builtin-id
+          disabled: true
+        - name: indent-error-flow
+          disabled: true
+    forbidigo:
+      forbid:
+        - pattern: fmt.Print
+        - pattern: fmt.Println
+        - pattern: fmt.Printf
+        - pattern: print
+        - pattern: println
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
+      disabled-checks:
+        - httpNoBody
+        - deferInLoop
+        - exitAfterDefer
+        - hugeParam
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+    gosec:
+      excludes:
+        - G204
+        - G304
+    thelper:
+      test:
+        first: true
+        name: true
+        begin: true
+      benchmark:
+        first: true
+        name: true
+        begin: true
+      tb:
+        first: true
+        name: true
+        begin: true
+  exclusions:
     rules:
-      - name: exported
-        disabled: true  # Отключаем правило о stuttering names
-      - name: var-naming
-        disabled: true  # Отключаем правило о подчеркиваниях в именах пакетов
-      - name: unused-parameter
-        disabled: true  # Отключаем правило о неиспользуемых параметрах
-      - name: context-as-argument
-        disabled: true  # Отключаем правило о позиции context
-      - name: redefines-builtin-id
-        disabled: true  # Отключаем правило о переопределении встроенных функций
-      - name: indent-error-flow
-        disabled: true  # Отключаем правило о структуре if-else
-  forbidigo:
-    forbid:
-      - fmt.Print
-      - fmt.Println
-      - fmt.Printf
-      - print
-      - println
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - experimental
-      - opinionated
-      - performance
-      - style
-    disabled-checks:
-      - httpNoBody  # Отключаем проверку http.NoBody
-      - deferInLoop # Отключаем проверку defer в цикле
-      - exitAfterDefer # Отключаем проверку exit после defer
-      - hugeParam   # Отключаем проверку больших параметров
-  errcheck:
-    check-type-assertions: false
-    check-blank: false
-  gosec:
-    excludes:
-      - G204  # Subprocess launched with variable - нормально для управления сервисами
-      - G304  # Potential file inclusion via variable - уже исправлено
-  thelper:
-    test:
-      first: true
-      name: true
-      begin: true
-    benchmark:
-      first: true
-      name: true
-      begin: true
-    tb:
-      first: true
-      name: true
-      begin: true
+      - path: _test\.go
+        linters:
+          - errcheck
+          - thelper
+      - path: test/
+        linters:
+          - errcheck
+          - forbidigo
+          - unused
+      - path: cmd/
+        linters:
+          - gocyclo
+          - funlen
+          - forbidigo
+          - unused
+      - path: pkg/
+        linters:
+          - gocyclo
+          - funlen
+          - unused
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+    - gofumpt
 
 issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck  # Отключаем errcheck для тестов
-        - thelper   # Отключаем thelper для некоторых тестов
-    - path: test/
-      linters:
-        - errcheck
-        - forbidigo
-        - unused
-    - path: cmd/
-      linters:
-        - gocyclo   # Отключаем gocyclo для main функций
-        - funlen    # Отключаем funlen для main функций
-        - forbidigo # Отключаем forbidigo для cmd
-        - unused    # Отключаем unused для cmd
-    - path: pkg/
-      linters:
-        - gocyclo   # Отключаем gocyclo для некоторых функций
-        - funlen    # Отключаем funlen для некоторых функций
-        - unused    # Отключаем unused для некоторых полей
-
-  max-issues-per-linter: 0
-  max-same-issues: 0 
+  max-per-linter: 0
+  max-same: 0 
