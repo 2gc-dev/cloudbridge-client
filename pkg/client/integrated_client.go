@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"log"
 	"net"
 	"strconv"
 	"sync"
@@ -430,7 +431,9 @@ func (ic *IntegratedClient) Close() error {
 	// Close all clients
 	for _, client := range ic.clients {
 		if closer, ok := client.(interface{ Close() error }); ok {
-			closer.Close()
+			if err := closer.Close(); err != nil {
+				log.Printf("Error closing client: %v", err)
+			}
 		}
 	}
 
@@ -515,7 +518,9 @@ func (ic *IntegratedClient) SwitchProtocol(newProtocol protocol.Protocol) error 
 	
 	// Close current connection
 	if closer, ok := ic.clients[ic.currentProtocol].(interface{ Close() error }); ok {
-		closer.Close()
+		if err := closer.Close(); err != nil {
+			log.Printf("Error closing current protocol client: %v", err)
+		}
 	}
 
 	ic.currentProtocol = newProtocol

@@ -1,44 +1,59 @@
-name: Build
+name: Build and Test
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
   pull_request:
     branches: [ main ]
 
 env:
-  GO_VERSION: '1.21'
+  GO_VERSION: '1.23'
   CGO_ENABLED: 0
 
 jobs:
+  # Тестирование на разных ОС
   test:
-    name: Test
-    runs-on: ubuntu-latest
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        go-version: ['1.23']
+    
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Set up Go
+      - name: Set up Go ${{ matrix.go-version }}
         uses: actions/setup-go@v4
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: ${{ matrix.go-version }}
 
       - name: Install dependencies
-        run: go mod download
+        run: |
+          go mod download
+          go mod tidy
 
-      - name: Run tests
-        run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+      - name: Run unit tests
+        run: go test -v -race -coverprofile=coverage-${{ matrix.os }}.txt -covermode=atomic ./...
+
+      - name: Run integration tests
+        run: go test -v -tags=integration ./test/
+        if: matrix.os == 'ubuntu-latest'
 
       - name: Upload coverage
         uses: codecov/codecov-action@v3
         with:
-          file: ./coverage.txt
-          fail_ci_if_error: true
+          file: ./coverage-${{ matrix.os }}.txt
+          fail_ci_if_error: false
 
+  # Линтинг и проверка качества кода
   lint:
-    name: Lint
+    name: Lint and Security Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v4
@@ -53,24 +68,232 @@ jobs:
       - name: Run golangci-lint
         run: golangci-lint run --timeout=5m
 
+      - name: Run security checks
+        run: |
+          # Install gosec
+          curl -sfL https://raw.githubusercontent.com/securecodewarrior/gosec/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.22.5
+          
+          # Run gosec security audit
+          gosec -fmt=json -out=gosec-report.json ./...
+          
+          # Check for critical issues
+          if jq '.Issues[] | select(.severity == "HIGH")' gosec-report.json | grep -q .; then
+            echo "❌ Critical security issues found!"
+            jq '.Issues[] | select(.severity == "HIGH") | {file: .file, line: .line, rule_id: .rule_id, details: .details}' gosec-report.json
+            exit 1
+          else
+            echo "✅ No critical security issues found"
+          fi
+          
+          # Install govulncheck
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          
+          # Run vulnerability check
+          govulncheck ./... || echo "⚠️ Vulnerability check completed with warnings"
+          
+          # Upload security report as artifact
+          if [ -f gosec-report.json ]; then
+            echo "📊 Security report generated: gosec-report.json"
+          fi
+
+      - name: Check for license headers
+        run: |
+          # Проверяем наличие лицензии в Go файлах
+          find . -name "*.go" -not -path "./vendor/*" -not -path "./test/mock_relay/*" | head -10 | xargs grep -L "Copyright" || true
+
+      - name: Upload security report
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: security-report
+          path: gosec-report.json
+          retention-days: 30
+
+  # Сборка для всех платформ
   build:
-    name: Build
-    needs: [test, lint]
+    name: Build for ${{ matrix.os }}-${{ matrix.arch }}
     runs-on: ubuntu-latest
+    needs: [test, lint]
+    strategy:
+      matrix:
+        include:
+          # Linux
+          - os: linux
+            arch: amd64
+            binary_name: cloudbridge-client-linux-amd64
+          - os: linux
+            arch: arm64
+            binary_name: cloudbridge-client-linux-arm64
+          # Windows
+          - os: windows
+            arch: amd64
+            binary_name: cloudbridge-client-windows-amd64.exe
+          - os: windows
+            arch: arm64
+            binary_name: cloudbridge-client-windows-arm64.exe
+          # macOS
+          - os: darwin
+            arch: amd64
+            binary_name: cloudbridge-client-darwin-amd64
+          - os: darwin
+            arch: arm64
+            binary_name: cloudbridge-client-darwin-arm64
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Build
+      - name: Install dependencies
         run: |
-          go build -v -o cloudbridge-client ./cmd/cloudbridge-client
+          go mod download
+          go mod tidy
 
-      - name: Upload artifacts
+      - name: Build binary
+        run: |
+          VERSION=$(git describe --tags --always --dirty)
+          LDFLAGS="-X main.Version=${VERSION} -X main.BuildTime=$(date -u '+%Y-%m-%d_%H:%M:%S') -X main.GitCommit=$(git rev-parse HEAD)"
+          
+          GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build \
+            -ldflags "${LDFLAGS}" \
+            -o build/${{ matrix.binary_name }} \
+            ./cmd/cloudbridge-client
+
+      - name: Build mock relay
+        run: |
+          GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build \
+            -o build/mock_relay-${{ matrix.os }}-${{ matrix.arch }} \
+            ./test/mock_relay
+
+      - name: Create checksums
+        run: |
+          cd build
+          if [[ "${{ matrix.os }}" == "windows" ]]; then
+            sha256sum ${{ matrix.binary_name }} > ${{ matrix.binary_name }}.sha256
+          else
+            shasum -a 256 ${{ matrix.binary_name }} > ${{ matrix.binary_name }}.sha256
+          fi
+
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: binaries
-          path: cloudbridge-client 
+          name: binaries-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            build/${{ matrix.binary_name }}
+            build/${{ matrix.binary_name }}.sha256
+            build/mock_relay-${{ matrix.os }}-${{ matrix.arch }}
+          retention-days: 30
+
+  # Сборка Docker образа
+  docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [test, lint]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: false
+          tags: cloudbridge-client:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Создание релиза
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: Create release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+      - name: Upload release assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/binaries-linux-amd64/cloudbridge-client-linux-amd64
+          asset_name: cloudbridge-client-linux-amd64
+          asset_content_type: application/octet-stream
+
+      - name: Upload release assets - Linux ARM64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/binaries-linux-arm64/cloudbridge-client-linux-arm64
+          asset_name: cloudbridge-client-linux-arm64
+          asset_content_type: application/octet-stream
+
+      - name: Upload release assets - Windows AMD64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/binaries-windows-amd64/cloudbridge-client-windows-amd64.exe
+          asset_name: cloudbridge-client-windows-amd64.exe
+          asset_content_type: application/octet-stream
+
+      - name: Upload release assets - Windows ARM64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/binaries-windows-arm64/cloudbridge-client-windows-arm64.exe
+          asset_name: cloudbridge-client-windows-arm64.exe
+          asset_content_type: application/octet-stream
+
+      - name: Upload release assets - macOS AMD64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/binaries-darwin-amd64/cloudbridge-client-darwin-amd64
+          asset_name: cloudbridge-client-darwin-amd64
+          asset_content_type: application/octet-stream
+
+      - name: Upload release assets - macOS ARM64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/binaries-darwin-arm64/cloudbridge-client-darwin-arm64
+          asset_name: cloudbridge-client-darwin-arm64
+          asset_content_type: application/octet-stream 

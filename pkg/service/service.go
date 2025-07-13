@@ -282,10 +282,25 @@ func uninstallMacOS() error {
 // Вспомогательная функция для копирования файлов
 func copyFile(src, dst string) error {
 	// Validate source path to prevent directory traversal
-	if !filepath.IsAbs(src) || strings.Contains(src, "..") {
+	cleanSrc := filepath.Clean(src)
+	if !filepath.IsAbs(cleanSrc) || strings.Contains(cleanSrc, "..") {
 		return fmt.Errorf("invalid source path: %s", src)
 	}
-	input, err := os.ReadFile(src)
+	
+	// Additional security check - ensure source is within allowed directories
+	allowedDirs := []string{"/tmp", "/var/tmp", "/usr/local/bin", "/opt"}
+	allowed := false
+	for _, dir := range allowedDirs {
+		if strings.HasPrefix(cleanSrc, dir) {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return fmt.Errorf("source path not in allowed directories: %s", src)
+	}
+	
+	input, err := os.ReadFile(cleanSrc)
 	if err != nil {
 		return err
 	}

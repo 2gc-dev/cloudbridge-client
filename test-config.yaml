@@ -9,9 +9,9 @@ tls:
 
 # Server Configuration
 server:
-  host: "edge.2gc.ru"
-  port: 3456  # Relay Server (основной) порт для туннелирования
-  jwt_token: "test-jwt-token"
+  host: localhost
+  port: 8082
+  jwt_token: "test-token"
 
 # Auth Configuration
 auth:

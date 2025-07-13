@@ -1,56 +1,237 @@
-# Обзор архитектуры: CloudBridge Relay Client
+# CloudBridge Client Architecture
 
-## Основные компоненты
+## Обзор
 
-- **ConnectionManager**: Устанавливает и поддерживает защищённые соединения TLS 1.3 с сервером relay.
-- **AuthenticationManager**: Обрабатывает аутентификацию через JWT и Keycloak, проверяет токены и извлекает claims.
-- **TunnelManager**: Управляет созданием, валидацией и жизненным циклом туннелей (локальные/удалённые порты, проксирование).
-- **HeartbeatManager**: Периодически отправляет heartbeat для контроля состояния соединения и инициирует переподключение при необходимости.
-- **ErrorHandler**: Централизованная обработка ошибок, логика повторов и экспоненциальный backoff для временных ошибок.
-- **Config**: Загружает и валидирует конфигурацию из YAML, переменных окружения и CLI.
-- **Logging**: Структурированное логирование с настраиваемым уровнем и форматом.
+CloudBridge Client - это Go-приложение для создания защищенных туннелей через CloudBridge Relay Server. Клиент подключается к relay серверу и создает туннели для безопасного доступа к удаленным ресурсам.
 
-## Поток данных
+## Архитектура подключения
 
-1. **Запуск**: Загрузка конфигурации → разбор CLI/ENV → валидация
-2. **Подключение**: Установка TLS 1.3 соединения с relay
-3. **Hello**: Обмен hello/hello_response (согласование протокола)
-4. **Аутентификация**: Отправка JWT/Keycloak токена, получение auth_response
-5. **Туннель**: Отправка tunnel_info, получение tunnel_response, запуск прокси
-6. **Heartbeat**: Периодическая отправка heartbeat, обработка heartbeat_response
-7. **Обработка ошибок**: При ошибке — повтор/отложенный повтор или корректное завершение
+### Основной домен: edge.2gc.ru
 
-## Диаграмма взаимодействия компонентов
+Клиент подключается к следующим сервисам на домене `edge.2gc.ru`:
 
-```mermaid
-graph TD
-  A[Загрузчик конфигурации] --> B[ConnectionManager]
-  B --> C[AuthenticationManager]
-  C --> D[TunnelManager]
-  B --> E[HeartbeatManager]
-  B --> F[ErrorHandler]
-  F --> B
-  F --> C
-  F --> D
-  F --> E
-  B --> G[Logging]
-  C --> G
-  D --> G
-  E --> G
-  F --> G
+#### 1. Relay Server (основной) - 3456/tcp
+- **Назначение**: Основной сервис для туннелирования
+- **Протокол**: TCP
+- **Использование**: Создание и управление туннелями
+- **Аутентификация**: JWT токен
+
+#### 2. Relay API - 8082/tcp
+- **Назначение**: REST API для управления
+- **Протокол**: HTTP/HTTPS
+- **Использование**: Управление туннелями, мониторинг, конфигурация
+- **Аутентификация**: JWT токен
+
+#### 3. Keycloak - 8080/tcp
+- **Назначение**: Аутентификация и авторизация
+- **Протокол**: HTTP/HTTPS
+- **Использование**: Получение JWT токенов
+- **Аутентификация**: Client credentials
+
+## Схема подключения
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   CloudBridge   │    │   Relay Server  │    │   Remote Host   │
+│     Client      │    │   (edge.2gc.ru) │    │   (192.168.x.x) │
+│                 │    │                 │    │                 │
+│ Local Port      │◄──►│ Port 3456       │◄──►│ Remote Port     │
+│ (3389)          │    │ (Tunneling)     │    │ (3389)          │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Keycloak      │    │   Relay API     │    │   Health Check  │
+│   (8080/tcp)    │    │   (8082/tcp)    │    │   (9090/tcp)    │
+│   Auth          │    │   Management    │    │   Metrics       │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-## Расширяемость
-- Новые методы аутентификации можно добавить через AuthenticationManager
-- Дополнительные типы туннелей или протоколы — через TunnelManager
-- Логирование и мониторинг интегрируются через Logging
+## Процесс подключения
 
-## Границы безопасности
-- Весь сетевой трафик шифруется (TLS 1.3)
-- Токены и секреты никогда не логируются
-- Все ошибки и повторы логируются для аудита
+### 1. Аутентификация
+```bash
+# Получение JWT токена от Keycloak
+curl -X POST "https://edge.2gc.ru/realms/cloudbridge/protocol/openid-connect/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials" \
+  -d "client_id=relay-client" \
+  -d "client_secret=<YOUR_CLIENT_SECRET>"
+```
 
-## См. также
-- `docs/README.md` — примеры использования
-- `docs/API.md` — детали протокола
-- `docs/SECURITY.md` — модель безопасности 
+### 2. Подключение к Relay Server
+```yaml
+server:
+  host: edge.2gc.ru
+  port: 3456  # Основной порт для туннелирования
+  jwt_token: "<JWT_TOKEN_FROM_KEYCLOAK>"
+```
+
+### 3. Создание туннеля
+```go
+// Клиент подключается к порту 3456
+client.Connect("edge.2gc.ru", 3456)
+
+// Выполняет handshake с JWT токеном
+client.Handshake(jwtToken)
+
+// Создает туннель
+tunnelID, err := client.CreateTunnel(localPort, remoteHost, remotePort)
+```
+
+## Конфигурация клиента
+
+### Основная конфигурация
+```yaml
+# config.yaml
+server:
+  host: edge.2gc.ru
+  port: 3456  # Relay Server (основной)
+  jwt_token: "<JWT_TOKEN>"
+
+tls:
+  enabled: false  # Для production включить TLS
+
+tunnel:
+  local_port: 3389
+  reconnect_delay: 5
+  max_retries: 3
+
+metrics:
+  enabled: true
+  port: 9090
+  path: "/metrics"
+```
+
+### Переменные окружения
+```bash
+export CLOUDBRIDGE_RELAY_HOST="edge.2gc.ru"
+export CLOUDBRIDGE_RELAY_PORT="3456"
+export CLOUDBRIDGE_JWT_TOKEN="<JWT_TOKEN>"
+```
+
+## Безопасность
+
+### TLS/SSL
+- Поддержка TLS 1.3
+- Сертификаты клиента и сервера
+- Проверка CA сертификатов
+
+### Аутентификация
+- JWT токены от Keycloak
+- HMAC-SHA256 подпись
+- Проверка срока действия токенов
+
+### Сетевая безопасность
+- Шифрование трафика
+- Защита от MITM атак
+- Rate limiting
+
+## Мониторинг
+
+### Метрики Prometheus
+```bash
+# Метрики доступны на порту 9090
+curl http://localhost:9090/metrics
+
+# Основные метрики:
+# - relay_connections_total
+# - relay_tunnels_active
+# - relay_handshake_duration_seconds
+# - relay_errors_total
+```
+
+### Health Checks
+```bash
+# Health check endpoint
+curl http://localhost:9090/health
+
+# Readiness check
+curl http://localhost:9090/ready
+
+# Liveness check
+curl http://localhost:9090/live
+```
+
+## Устранение неполадок
+
+### Проверка подключения
+```bash
+# Проверка доступности relay сервера
+telnet edge.2gc.ru 3456
+
+# Проверка TLS подключения
+openssl s_client -connect edge.2gc.ru:3456
+
+# Проверка Keycloak
+curl -k https://edge.2gc.ru/realms/cloudbridge/.well-known/openid_configuration
+```
+
+### Логирование
+```bash
+# Просмотр логов клиента
+tail -f /var/log/cloudbridge-client/client.log
+
+# Фильтрация по уровню
+grep "ERROR" /var/log/cloudbridge-client/client.log
+```
+
+### Частые проблемы
+
+1. **Connection refused на порту 3456**
+   - Проверить доступность edge.2gc.ru
+   - Проверить настройки файрвола
+   - Проверить DNS резолвинг
+
+2. **Invalid JWT token**
+   - Проверить срок действия токена
+   - Получить новый токен от Keycloak
+   - Проверить права доступа
+
+3. **Tunnel creation failed**
+   - Проверить доступность удаленного хоста
+   - Проверить настройки туннеля
+   - Проверить логи relay сервера
+
+## Развертывание
+
+### Docker
+```bash
+docker run -d \
+  --name cloudbridge-client \
+  -v $(pwd)/config.yaml:/app/config.yaml \
+  -p 3389:3389 \
+  -p 9090:9090 \
+  cloudbridge-client
+```
+
+### Systemd
+```bash
+sudo systemctl start cloudbridge-client
+sudo systemctl status cloudbridge-client
+sudo journalctl -u cloudbridge-client -f
+```
+
+## Разработка
+
+### Локальная разработка
+```bash
+# Запуск с тестовой конфигурацией
+./cloudbridge-client --config testdata/config-test.yaml
+
+# Запуск с отладкой
+./cloudbridge-client --config config.yaml --verbose --log-level debug
+```
+
+### Тестирование
+```bash
+# Unit тесты
+go test -v ./...
+
+# Интеграционные тесты
+go test -v -tags=integration ./test/
+
+# Бенчмарки
+go test -v -bench=. -benchmem ./test/
+``` 

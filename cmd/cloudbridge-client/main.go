@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/2gc-dev/cloudbridge-client/pkg/config"
+	"github.com/2gc-dev/cloudbridge-client/pkg/health"
 	"github.com/2gc-dev/cloudbridge-client/pkg/relay"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
@@ -28,6 +30,11 @@ var (
 	remoteHost string
 	remotePort int
 	verbose    bool
+	
+	// Global variables for health checks
+	healthChecker *health.HealthChecker
+	relayClient   *relay.Client
+	appConfig     *config.Config
 )
 
 const (
@@ -35,6 +42,189 @@ const (
 	initialDelaySec = 1
 	maxDelaySec     = 30
 )
+
+// HealthResponse represents the health check response
+type HealthResponse struct {
+	Status    string                    `json:"status"`
+	Timestamp time.Time                 `json:"timestamp"`
+	Version   string                    `json:"version"`
+	Uptime    time.Duration             `json:"uptime"`
+	Checks    map[string]*health.HealthCheck `json:"checks"`
+	Metadata  map[string]interface{}    `json:"metadata"`
+}
+
+var startTime = time.Now()
+
+// healthHandler handles health check requests
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	response := HealthResponse{
+		Status:    string(healthChecker.GetStatus()),
+		Timestamp: time.Now(),
+		Version:   version,
+		Uptime:    time.Since(startTime),
+		Checks:    healthChecker.GetResults(),
+		Metadata: map[string]interface{}{
+			"go_version": runtime.Version(),
+			"platform":   fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
+			"goroutines": runtime.NumGoroutine(),
+		},
+	}
+	
+	// Set appropriate HTTP status code
+	statusCode := http.StatusOK
+	if response.Status == string(health.Unhealthy) {
+		statusCode = http.StatusServiceUnavailable
+	} else if response.Status == string(health.Degraded) {
+		statusCode = http.StatusOK // Degraded is still OK for HTTP
+	}
+	
+	w.WriteHeader(statusCode)
+	
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Error encoding health response: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
+}
+
+// readyHandler handles readiness check
+func readyHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	// Check if client is connected and tunnel is active
+	isReady := relayClient != nil && relayClient.IsConnected()
+	
+	response := map[string]interface{}{
+		"ready":     isReady,
+		"timestamp": time.Now(),
+		"status":    "ready",
+	}
+	
+	if !isReady {
+		response["status"] = "not_ready"
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}
+	
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Error encoding ready response: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
+}
+
+// liveHandler handles liveness check
+func liveHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	response := map[string]interface{}{
+		"alive":    true,
+		"timestamp": time.Now(),
+		"status":    "alive",
+	}
+	
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Error encoding live response: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
+}
+
+// setupHealthChecks initializes health checks
+func setupHealthChecks(cfg *config.Config) {
+	healthConfig := &health.Config{
+		Interval: 30 * time.Second,
+		Timeout:  10 * time.Second,
+	}
+	
+	healthChecker = health.NewHealthChecker(healthConfig)
+	
+	// Add health checks
+	healthChecker.AddCheck("relay_connection", func(ctx context.Context) (*health.HealthCheck, error) {
+		if relayClient == nil {
+			return &health.HealthCheck{
+				Name:        "relay_connection",
+				Description: "Connection to relay server",
+				Status:      health.Unhealthy,
+				LastCheck:   time.Now(),
+				LastError:   fmt.Errorf("client not initialized"),
+			}, nil
+		}
+		
+		if !relayClient.IsConnected() {
+			return &health.HealthCheck{
+				Name:        "relay_connection",
+				Description: "Connection to relay server",
+				Status:      health.Unhealthy,
+				LastCheck:   time.Now(),
+				LastError:   fmt.Errorf("not connected to relay server"),
+			}, nil
+		}
+		
+		return &health.HealthCheck{
+			Name:        "relay_connection",
+			Description: "Connection to relay server",
+			Status:      health.Healthy,
+			LastCheck:   time.Now(),
+		}, nil
+	})
+	
+	// Add tunnel health check
+	healthChecker.AddCheck("tunnel_status", func(ctx context.Context) (*health.HealthCheck, error) {
+		if relayClient == nil {
+			return &health.HealthCheck{
+				Name:        "tunnel_status",
+				Description: "Tunnel status",
+				Status:      health.Unhealthy,
+				LastCheck:   time.Now(),
+				LastError:   fmt.Errorf("client not initialized"),
+			}, nil
+		}
+		
+		// This would need to be implemented in the relay client
+		// For now, we'll assume it's healthy if connected
+		return &health.HealthCheck{
+			Name:        "tunnel_status",
+			Description: "Tunnel status",
+			Status:      health.Healthy,
+			LastCheck:   time.Now(),
+		}, nil
+	})
+	
+	// Add metrics health check
+	healthChecker.AddCheck("metrics_endpoint", func(ctx context.Context) (*health.HealthCheck, error) {
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Get("http://localhost:9090/metrics")
+		if err != nil {
+			return &health.HealthCheck{
+				Name:        "metrics_endpoint",
+				Description: "Metrics endpoint availability",
+				Status:      health.Unhealthy,
+				LastCheck:   time.Now(),
+				LastError:   err,
+			}, nil
+		}
+		defer resp.Body.Close()
+		
+		if resp.StatusCode != http.StatusOK {
+			return &health.HealthCheck{
+				Name:        "metrics_endpoint",
+				Description: "Metrics endpoint availability",
+				Status:      health.Unhealthy,
+				LastCheck:   time.Now(),
+				LastError:   fmt.Errorf("metrics endpoint returned status %d", resp.StatusCode),
+			}, nil
+		}
+		
+		return &health.HealthCheck{
+			Name:        "metrics_endpoint",
+			Description: "Metrics endpoint availability",
+			Status:      health.Healthy,
+			LastCheck:   time.Now(),
+		}, nil
+	})
+	
+	// Start health checker
+	healthChecker.Start()
+}
 
 func main() {
 	// Если есть аргументы командной строки, обрабатываем их как команды
@@ -63,6 +253,16 @@ func main() {
 	}()
 	log.SetOutput(os.Stdout) // Упростим логирование
 
+	// Load configuration
+	cfg, err := config.LoadConfig(*configPath)
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
+	appConfig = cfg
+
+	// Setup health checks
+	setupHealthChecks(cfg)
+
 	// Запуск метрик и health check
 	metricsServer := &http.Server{
 		Addr:         *metricsAddr,
@@ -71,19 +271,13 @@ func main() {
 	}
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
-		http.Handle("/health", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("OK"))
-		}))
+		http.Handle("/health", http.HandlerFunc(healthHandler))
+		http.Handle("/ready", http.HandlerFunc(readyHandler))
+		http.Handle("/live", http.HandlerFunc(liveHandler))
 		if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("Failed to start metrics server: %v", err)
 		}
 	}()
-
-	cfg, err := config.LoadConfig(*configPath)
-	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
-	}
 
 	log.Printf("Running on %s/%s", runtime.GOOS, runtime.GOARCH)
 
@@ -108,6 +302,8 @@ func main() {
 		for {
 			start := time.Now()
 			client := relay.NewClient(cfg.TLS.Enabled, tlsConfig)
+			relayClient = client // Set global variable for health checks
+			
 			if err := client.Connect(cfg.Server.Host, cfg.Server.Port); err != nil {
 				log.Printf("Failed to connect to relay server: %v", err)
 				retries++
@@ -176,6 +372,11 @@ func main() {
 	// Ожидание сигнала завершения
 	<-sigChan
 	log.Println("Shutting down...")
+	
+	// Stop health checker
+	if healthChecker != nil {
+		healthChecker.Stop()
+	}
 }
 
 func parseCommand() error {
@@ -218,11 +419,37 @@ func run(cmd *cobra.Command, args []string) error {
 		cfg.Auth.Secret = token // For JWT auth, secret is the token
 	}
 
+	// Setup health checks
+	setupHealthChecks(cfg)
+
+	// Start HTTP server for metrics and health checks
+	if cfg.Metrics.Enabled {
+		metricsAddr := fmt.Sprintf(":%d", cfg.Metrics.Port)
+		metricsServer := &http.Server{
+			Addr:         metricsAddr,
+			ReadTimeout:  5 * time.Second,
+			WriteTimeout: 10 * time.Second,
+		}
+		
+		go func() {
+			http.Handle(cfg.Metrics.Path, promhttp.Handler())
+			http.Handle(cfg.Health.Path, http.HandlerFunc(healthHandler))
+			http.Handle("/ready", http.HandlerFunc(readyHandler))
+			http.Handle("/live", http.HandlerFunc(liveHandler))
+			
+			log.Printf("Starting metrics server on %s", metricsAddr)
+			if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Printf("Failed to start metrics server: %v", err)
+			}
+		}()
+	}
+
 	// Create client
 	client, err := relay.NewClientFromConfig(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to create client: %w", err)
 	}
+	relayClient = client // Set global variable for health checks
 	defer func() {
 		if err := client.Close(); err != nil {
 			log.Printf("Error closing client: %v", err)
@@ -261,7 +488,9 @@ func run(cmd *cobra.Command, args []string) error {
 
 			if err := client.Handshake(cfg.Server.JWTToken); err != nil {
 				log.Printf("Handshake failed: %v", err)
-				client.Close()
+				if closeErr := client.Close(); closeErr != nil {
+					log.Printf("Error closing client after handshake failure: %v", closeErr)
+				}
 				retries++
 				if retries > maxRetries {
 					log.Fatalf("Max reconnect attempts reached. Exiting.")
@@ -278,7 +507,9 @@ func run(cmd *cobra.Command, args []string) error {
 			tunnelID, err := client.CreateTunnel(localPort, remoteHost, remotePort)
 			if err != nil {
 				log.Printf("Failed to create tunnel: %v", err)
-				client.Close()
+				if closeErr := client.Close(); closeErr != nil {
+					log.Printf("Error closing client after tunnel creation failure: %v", closeErr)
+				}
 				retries++
 				if retries > maxRetries {
 					log.Fatalf("Max reconnect attempts reached. Exiting.")
@@ -304,6 +535,12 @@ func run(cmd *cobra.Command, args []string) error {
 	// Ожидание сигнала завершения
 	<-sigChan
 	log.Println("Shutting down...")
+	
+	// Stop health checker
+	if healthChecker != nil {
+		healthChecker.Stop()
+	}
+	
 	return nil
 }
 

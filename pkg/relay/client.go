@@ -3,10 +3,13 @@ package relay
 import (
 	"bufio"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -305,10 +308,92 @@ func (c *Client) CreateTunnel(localPort int, remoteHost string, remotePort int) 
 
 // NewTLSConfig creates a new TLS configuration
 func NewTLSConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
-	// Implementation for TLS config creation
-	return &tls.Config{
-		InsecureSkipVerify: true, // For development, should be false in production
-	}, nil
+	config := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		// InsecureSkipVerify: false, // Always verify certificates in production
+	}
+
+	// Load CA certificate if provided
+	if caFile != "" {
+		// Validate CA file path to prevent directory traversal
+		cleanCAFile := filepath.Clean(caFile)
+		if !filepath.IsAbs(cleanCAFile) || strings.Contains(cleanCAFile, "..") {
+			return nil, fmt.Errorf("invalid CA file path: %s", caFile)
+		}
+		
+		// Additional security check - ensure CA file is within allowed directories
+		allowedDirs := []string{"/etc/cloudbridge-client/certs", "/etc/ssl/certs", "/usr/local/share/ca-certificates"}
+		allowed := false
+		for _, dir := range allowedDirs {
+			if strings.HasPrefix(cleanCAFile, dir) {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return nil, fmt.Errorf("CA file path not in allowed directories: %s", caFile)
+		}
+		
+		caCert, err := os.ReadFile(cleanCAFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CA cert: %w", err)
+		}
+
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("failed to append CA cert")
+		}
+
+		config.RootCAs = caCertPool
+	}
+
+	// Load client certificate and key if provided
+	if certFile != "" && keyFile != "" {
+		// Validate certificate file paths to prevent directory traversal
+		cleanCertFile := filepath.Clean(certFile)
+		cleanKeyFile := filepath.Clean(keyFile)
+		
+		if !filepath.IsAbs(cleanCertFile) || strings.Contains(cleanCertFile, "..") {
+			return nil, fmt.Errorf("invalid cert file path: %s", certFile)
+		}
+		if !filepath.IsAbs(cleanKeyFile) || strings.Contains(cleanKeyFile, "..") {
+			return nil, fmt.Errorf("invalid key file path: %s", keyFile)
+		}
+		
+		// Additional security check - ensure certificate files are within allowed directories
+		allowedDirs := []string{"/etc/cloudbridge-client/certs", "/etc/ssl/private", "/usr/local/etc/ssl"}
+		certAllowed := false
+		keyAllowed := false
+		for _, dir := range allowedDirs {
+			if strings.HasPrefix(cleanCertFile, dir) {
+				certAllowed = true
+			}
+			if strings.HasPrefix(cleanKeyFile, dir) {
+				keyAllowed = true
+			}
+		}
+		if !certAllowed {
+			return nil, fmt.Errorf("cert file path not in allowed directories: %s", certFile)
+		}
+		if !keyAllowed {
+			return nil, fmt.Errorf("key file path not in allowed directories: %s", keyFile)
+		}
+		
+		cert, err := tls.LoadX509KeyPair(cleanCertFile, cleanKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load client cert: %w", err)
+		}
+
+		config.Certificates = []tls.Certificate{cert}
+	}
+
+	// For development/testing only - disable certificate verification
+	// TODO: Remove this in production
+	if os.Getenv("CLOUDBRIDGE_DEV_MODE") == "true" {
+		config.InsecureSkipVerify = true
+	}
+
+	return config, nil
 }
 
 // IsConnected returns true if the client is connected

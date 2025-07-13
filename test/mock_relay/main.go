@@ -102,7 +102,9 @@ func handleConnection(conn net.Conn) {
 	// Validate token (simple check for demo)
 	token := authMsg.Token
 	if token == "" {
-		writeError(writer, "INVALID_TOKEN", "Token is required")
+		if err := writeError(writer, "INVALID_TOKEN", "Token is required"); err != nil {
+			log.Printf("Failed to write error: %v", err)
+		}
 		return
 	}
 

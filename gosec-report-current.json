@@ -1,0 +1,364 @@
+{
+	"Golang errors": {},
+	"Issues": [
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with variable",
+			"file": "/home/ubuntu/cloudbridge-client/pkg/service/service.go",
+			"code": "177: \tconfigPath := filepath.Join(os.Getenv(\"ProgramData\"), \"cloudbridge-client\", \"config.yaml\")\n178: \tif err := exec.Command(\"nssm\", \"set\", serviceName, \"AppParameters\", \"--config\", configPath).Run(); err != nil {\n179: \t\tlog.Printf(\"Error setting app parameters: %v\", err)\n",
+			"line": "178",
+			"column": "12",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with variable",
+			"file": "/home/ubuntu/cloudbridge-client/pkg/service/manager.go",
+			"code": "344: \tplistPath := fmt.Sprintf(\"/Library/LaunchDaemons/%s.plist\", sm.serviceName)\n345: \treturn exec.Command(\"launchctl\", \"unload\", plistPath).Run()\n346: }\n",
+			"line": "345",
+			"column": "9",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with variable",
+			"file": "/home/ubuntu/cloudbridge-client/pkg/service/manager.go",
+			"code": "338: \tplistPath := fmt.Sprintf(\"/Library/LaunchDaemons/%s.plist\", sm.serviceName)\n339: \treturn exec.Command(\"launchctl\", \"load\", plistPath).Run()\n340: }\n",
+			"line": "339",
+			"column": "9",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with variable",
+			"file": "/home/ubuntu/cloudbridge-client/pkg/service/manager.go",
+			"code": "323: \t// Unload service\n324: \tif err := exec.Command(\"launchctl\", \"unload\", plistPath).Run(); err != nil {\n325: \t\tlog.Printf(\"Error unloading service: %v\", err)\n",
+			"line": "324",
+			"column": "12",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with variable",
+			"file": "/home/ubuntu/cloudbridge-client/pkg/service/manager.go",
+			"code": "311: \t// Load service\n312: \tif err := exec.Command(\"launchctl\", \"load\", plistPath).Run(); err != nil {\n313: \t\treturn fmt.Errorf(\"failed to load service: %w\", err)\n",
+			"line": "312",
+			"column": "12",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with a potential tainted input or cmd arguments",
+			"file": "/home/ubuntu/cloudbridge-client/pkg/service/manager.go",
+			"code": "349: func (sm *ServiceManager) statusLaunchd() (string, error) {\n350: \toutput, err := exec.Command(\"launchctl\", \"list\", sm.serviceName).Output()\n351: \tif err != nil {\n",
+			"line": "350",
+			"column": "17",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with a potential tainted input or cmd arguments",
+			"file": "/home/ubuntu/cloudbridge-client/pkg/service/manager.go",
+			"code": "257: func (sm *ServiceManager) statusWindows() (string, error) {\n258: \toutput, err := exec.Command(\"sc\", \"query\", sm.serviceName).Output()\n259: \tif err != nil {\n",
+			"line": "258",
+			"column": "17",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with a potential tainted input or cmd arguments",
+			"file": "/home/ubuntu/cloudbridge-client/pkg/service/manager.go",
+			"code": "252: func (sm *ServiceManager) stopWindows() error {\n253: \treturn exec.Command(\"sc\", \"stop\", sm.serviceName).Run()\n254: }\n",
+			"line": "253",
+			"column": "9",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with a potential tainted input or cmd arguments",
+			"file": "/home/ubuntu/cloudbridge-client/pkg/service/manager.go",
+			"code": "247: func (sm *ServiceManager) startWindows() error {\n248: \treturn exec.Command(\"sc\", \"start\", sm.serviceName).Run()\n249: }\n",
+			"line": "248",
+			"column": "9",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with a potential tainted input or cmd arguments",
+			"file": "/home/ubuntu/cloudbridge-client/pkg/service/manager.go",
+			"code": "242: \t// Delete service\n243: \treturn exec.Command(\"sc\", \"delete\", sm.serviceName).Run()\n244: }\n",
+			"line": "243",
+			"column": "9",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with a potential tainted input or cmd arguments",
+			"file": "/home/ubuntu/cloudbridge-client/pkg/service/manager.go",
+			"code": "237: \t// Stop service first\n238: \tif err := exec.Command(\"sc\", \"stop\", sm.serviceName).Run(); err != nil {\n239: \t\tlog.Printf(\"Error stopping Windows service: %v\", err)\n",
+			"line": "238",
+			"column": "12",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with a potential tainted input or cmd arguments",
+			"file": "/home/ubuntu/cloudbridge-client/pkg/service/manager.go",
+			"code": "222: \t// Create service using sc.exe\n223: \tcmd := exec.Command(\"sc\", \"create\", sm.serviceName,\n224: \t\t\"binPath=\", fmt.Sprintf(\"\\\"%s --config %s --token %s\\\"\", sm.execPath, sm.configPath, token),\n225: \t\t\"start=\", \"auto\",\n226: \t\t\"DisplayName=\", sm.serviceName)\n227: \t\n",
+			"line": "223-226",
+			"column": "9",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with a potential tainted input or cmd arguments",
+			"file": "/home/ubuntu/cloudbridge-client/pkg/service/manager.go",
+			"code": "212: func (sm *ServiceManager) statusSystemd() (string, error) {\n213: \toutput, err := exec.Command(\"systemctl\", \"is-active\", sm.serviceName).Output()\n214: \tif err != nil {\n",
+			"line": "213",
+			"column": "17",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with a potential tainted input or cmd arguments",
+			"file": "/home/ubuntu/cloudbridge-client/pkg/service/manager.go",
+			"code": "207: func (sm *ServiceManager) stopSystemd() error {\n208: \treturn exec.Command(\"systemctl\", \"stop\", sm.serviceName).Run()\n209: }\n",
+			"line": "208",
+			"column": "9",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with a potential tainted input or cmd arguments",
+			"file": "/home/ubuntu/cloudbridge-client/pkg/service/manager.go",
+			"code": "202: func (sm *ServiceManager) startSystemd() error {\n203: \treturn exec.Command(\"systemctl\", \"start\", sm.serviceName).Run()\n204: }\n",
+			"line": "203",
+			"column": "9",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with a potential tainted input or cmd arguments",
+			"file": "/home/ubuntu/cloudbridge-client/pkg/service/manager.go",
+			"code": "182: \t}\n183: \tif err := exec.Command(\"systemctl\", \"disable\", sm.serviceName).Run(); err != nil {\n184: \t\tlog.Printf(\"Error disabling service: %v\", err)\n",
+			"line": "183",
+			"column": "12",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with a potential tainted input or cmd arguments",
+			"file": "/home/ubuntu/cloudbridge-client/pkg/service/manager.go",
+			"code": "179: \t// Stop and disable service\n180: \tif err := exec.Command(\"systemctl\", \"stop\", sm.serviceName).Run(); err != nil {\n181: \t\tlog.Printf(\"Error stopping service: %v\", err)\n",
+			"line": "180",
+			"column": "12",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with a potential tainted input or cmd arguments",
+			"file": "/home/ubuntu/cloudbridge-client/pkg/service/manager.go",
+			"code": "169: \t// Enable service\n170: \tif err := exec.Command(\"systemctl\", \"enable\", sm.serviceName).Run(); err != nil {\n171: \t\treturn fmt.Errorf(\"failed to enable service: %w\", err)\n",
+			"line": "170",
+			"column": "12",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "22",
+				"url": "https://cwe.mitre.org/data/definitions/22.html"
+			},
+			"rule_id": "G304",
+			"details": "Potential file inclusion via variable",
+			"file": "/home/ubuntu/cloudbridge-client/pkg/service/service.go",
+			"code": "287: \t}\n288: \tinput, err := os.ReadFile(src)\n289: \tif err != nil {\n",
+			"line": "288",
+			"column": "16",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "22",
+				"url": "https://cwe.mitre.org/data/definitions/22.html"
+			},
+			"rule_id": "G304",
+			"details": "Potential file inclusion via variable",
+			"file": "/home/ubuntu/cloudbridge-client/pkg/relay/client.go",
+			"code": "316: \tif caFile != \"\" {\n317: \t\tcaCert, err := os.ReadFile(caFile)\n318: \t\tif err != nil {\n",
+			"line": "317",
+			"column": "18",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "22",
+				"url": "https://cwe.mitre.org/data/definitions/22.html"
+			},
+			"rule_id": "G304",
+			"details": "Potential file inclusion via variable",
+			"file": "/home/ubuntu/cloudbridge-client/pkg/config/config.go",
+			"code": "108:         // Read config file\n109:         data, err := os.ReadFile(configPath)\n110: \tif err != nil {\n",
+			"line": "109",
+			"column": "22",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "LOW",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "703",
+				"url": "https://cwe.mitre.org/data/definitions/703.html"
+			},
+			"rule_id": "G104",
+			"details": "Errors unhandled",
+			"file": "/home/ubuntu/cloudbridge-client/test/mock_relay/main.go",
+			"code": "104: \tif token == \"\" {\n105: \t\twriteError(writer, \"INVALID_TOKEN\", \"Token is required\")\n106: \t\treturn\n",
+			"line": "105",
+			"column": "3",
+			"nosec": false,
+			"suppressions": null
+		}
+	],
+	"Stats": {
+		"files": 24,
+		"lines": 6253,
+		"nosec": 0,
+		"found": 22
+	},
+	"GosecVersion": "v2.22.5"
+}

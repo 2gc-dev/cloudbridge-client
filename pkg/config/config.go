@@ -52,6 +52,19 @@ type Config struct {
 		ID   string `yaml:"id"`
 		Name string `yaml:"name"`
 	} `yaml:"tenant"`
+
+	Metrics struct {
+		Enabled  bool   `yaml:"enabled"`
+		Port     int    `yaml:"port"`
+		Path     string `yaml:"path"`
+		Interval string `yaml:"interval"`
+	} `yaml:"metrics"`
+
+	Health struct {
+		Enabled       bool   `yaml:"enabled"`
+		Path          string `yaml:"path"`
+		CheckInterval string `yaml:"check_interval"`
+	} `yaml:"health"`
 }
 
 // Save сохраняет конфигурацию в файл
@@ -87,13 +100,27 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("invalid config path")
 	}
 
-	        // Validate config path to prevent directory traversal
-        if !filepath.IsAbs(configPath) || strings.Contains(configPath, "..") {
-                return nil, fmt.Errorf("invalid config path: %s", configPath)
-        }
-        
-        // Read config file
-        data, err := os.ReadFile(configPath)
+	        	// Validate config path to prevent directory traversal
+	cleanPath := filepath.Clean(configPath)
+	if !filepath.IsAbs(cleanPath) || strings.Contains(cleanPath, "..") {
+		return nil, fmt.Errorf("invalid config path: %s", configPath)
+	}
+	
+	// Additional security check - ensure path is within allowed directories
+	allowedDirs := []string{"/etc/cloudbridge-client", "/opt/cloudbridge-client", "/var/lib/cloudbridge-client"}
+	allowed := false
+	for _, dir := range allowedDirs {
+		if strings.HasPrefix(cleanPath, dir) {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return nil, fmt.Errorf("config path not in allowed directories: %s", configPath)
+	}
+	
+	// Read config file
+	data, err := os.ReadFile(cleanPath)
 	if err != nil {
 		return nil, fmt.Errorf("error reading config file: %v", err)
 	}
@@ -124,6 +151,25 @@ func LoadConfig(configPath string) (*Config, error) {
 	// Set protocol defaults
 	if config.Protocol.Version == "" {
 		config.Protocol.Version = "2.0"
+	}
+
+	// Set metrics defaults
+	if config.Metrics.Port == 0 {
+		config.Metrics.Port = 9090
+	}
+	if config.Metrics.Path == "" {
+		config.Metrics.Path = "/metrics"
+	}
+	if config.Metrics.Interval == "" {
+		config.Metrics.Interval = "15s"
+	}
+
+	// Set health defaults
+	if config.Health.Path == "" {
+		config.Health.Path = "/health"
+	}
+	if config.Health.CheckInterval == "" {
+		config.Health.CheckInterval = "30s"
 	}
 
 	return config, nil
