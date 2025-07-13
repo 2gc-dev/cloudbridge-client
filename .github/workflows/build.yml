@@ -102,7 +102,7 @@ jobs:
           find . -name "*.go" -not -path "./vendor/*" -not -path "./test/mock_relay/*" | head -10 | xargs grep -L "Copyright" || true
 
       - name: Upload security report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: security-report
@@ -179,7 +179,7 @@ jobs:
           fi
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: binaries-${{ matrix.os }}-${{ matrix.arch }}
           path: |
@@ -223,30 +223,25 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: artifacts
 
       - name: Create release
         id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
+          files: |
+            artifacts/binaries-linux-amd64/cloudbridge-client-linux-amd64
+            artifacts/binaries-linux-arm64/cloudbridge-client-linux-arm64
+            artifacts/binaries-windows-amd64/cloudbridge-client-windows-amd64.exe
+            artifacts/binaries-darwin-amd64/cloudbridge-client-darwin-amd64
+            artifacts/binaries-darwin-arm64/cloudbridge-client-darwin-arm64
+          generate_release_notes: true
           draft: false
           prerelease: false
-
-      - name: Upload release assets
-        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/binaries-linux-amd64/cloudbridge-client-linux-amd64
-          asset_name: cloudbridge-client-linux-amd64
-          asset_content_type: application/octet-stream
 
       - name: Upload release assets - Linux ARM64
         uses: actions/upload-release-asset@v1
