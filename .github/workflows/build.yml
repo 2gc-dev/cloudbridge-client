@@ -34,7 +34,7 @@ jobs:
           go mod tidy
 
       - name: Run unit tests
-        run: go test -v -coverprofile=coverage.out -covermode=atomic ./...
+        run: go test -v -coverprofile coverage.out -covermode atomic ./...
 
       - name: Build mock relay
         run: |
