@@ -133,10 +133,10 @@ func LoadConfig(configPath string) (*Config, error) {
 
 	// Set defaults if not provided
 	if config.Server.Host == "" {
-		config.Server.Host = "localhost"
+		config.Server.Host = "edge.2gc.ru"
 	}
 	if config.Server.Port == 0 {
-		config.Server.Port = 8080
+		config.Server.Port = 3456
 	}
 	if config.Tunnel.LocalPort == 0 {
 		config.Tunnel.LocalPort = 3389
