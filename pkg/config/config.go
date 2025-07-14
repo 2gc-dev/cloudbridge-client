@@ -100,12 +100,12 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("invalid config path")
 	}
 
-	        	// Validate config path to prevent directory traversal
+	// Validate config path to prevent directory traversal
 	cleanPath := filepath.Clean(configPath)
 	if !filepath.IsAbs(cleanPath) || strings.Contains(cleanPath, "..") {
 		return nil, fmt.Errorf("invalid config path: %s", configPath)
 	}
-	
+
 	// Additional security check - ensure path is within allowed directories
 	allowedDirs := []string{"/etc/cloudbridge-client", "/opt/cloudbridge-client", "/var/lib/cloudbridge-client"}
 	allowed := false
@@ -118,10 +118,48 @@ func LoadConfig(configPath string) (*Config, error) {
 	if !allowed {
 		return nil, fmt.Errorf("config path not in allowed directories: %s", configPath)
 	}
-	
+
 	// Read config file
 	data, err := os.ReadFile(cleanPath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			config := &Config{}
+			// Set defaults if not provided
+			if config.Server.Host == "" {
+				config.Server.Host = "edge.2gc.ru"
+			}
+			if config.Server.Port == 0 {
+				config.Server.Port = 3456
+			}
+			if config.Tunnel.LocalPort == 0 {
+				config.Tunnel.LocalPort = 3389
+			}
+			if config.Tunnel.ReconnectDelay == 0 {
+				config.Tunnel.ReconnectDelay = 5
+			}
+			if config.Tunnel.MaxRetries == 0 {
+				config.Tunnel.MaxRetries = 3
+			}
+			if config.Protocol.Version == "" {
+				config.Protocol.Version = "2.0"
+			}
+			if config.Metrics.Port == 0 {
+				config.Metrics.Port = 9090
+			}
+			if config.Metrics.Path == "" {
+				config.Metrics.Path = "/metrics"
+			}
+			if config.Metrics.Interval == "" {
+				config.Metrics.Interval = "15s"
+			}
+			if config.Health.Path == "" {
+				config.Health.Path = "/health"
+			}
+			if config.Health.CheckInterval == "" {
+				config.Health.CheckInterval = "30s"
+			}
+			return config, nil
+		}
 		return nil, fmt.Errorf("error reading config file: %v", err)
 	}
 
@@ -147,12 +185,10 @@ func LoadConfig(configPath string) (*Config, error) {
 	if config.Tunnel.MaxRetries == 0 {
 		config.Tunnel.MaxRetries = 3
 	}
-
 	// Set protocol defaults
 	if config.Protocol.Version == "" {
 		config.Protocol.Version = "2.0"
 	}
-
 	// Set metrics defaults
 	if config.Metrics.Port == 0 {
 		config.Metrics.Port = 9090
@@ -163,7 +199,6 @@ func LoadConfig(configPath string) (*Config, error) {
 	if config.Metrics.Interval == "" {
 		config.Metrics.Interval = "15s"
 	}
-
 	// Set health defaults
 	if config.Health.Path == "" {
 		config.Health.Path = "/health"
