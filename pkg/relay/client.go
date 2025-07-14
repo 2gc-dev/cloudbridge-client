@@ -21,14 +21,14 @@ import (
 
 // Message types
 const (
-	MessageTypeHello         = "hello"
-	MessageTypeAuth          = "auth"
-	MessageTypeAuthResponse  = "auth_response"
-	MessageTypeTunnelInfo    = "tunnel_info"
-	MessageTypeTunnelResponse = "tunnel_response"
-	MessageTypeHeartbeat     = "heartbeat"
+	MessageTypeHello             = "hello"
+	MessageTypeAuth              = "auth"
+	MessageTypeAuthResponse      = "auth_response"
+	MessageTypeTunnelInfo        = "tunnel_info"
+	MessageTypeTunnelResponse    = "tunnel_response"
+	MessageTypeHeartbeat         = "heartbeat"
 	MessageTypeHeartbeatResponse = "heartbeat_response"
-	MessageTypeError         = "error"
+	MessageTypeError             = "error"
 
 	MaxMessageSize      = 1024 * 1024 // 1MB
 	ConnectTimeout      = 10 * time.Second
@@ -40,18 +40,18 @@ const (
 
 // Client represents a CloudBridge Relay client
 type Client struct {
-	conn    net.Conn
-	reader  *bufio.Reader
-	writer  *bufio.Writer
-	useTLS  bool
-	config  *tls.Config
-	cfg     *config.Config
+	conn   net.Conn
+	reader *bufio.Reader
+	writer *bufio.Writer
+	useTLS bool
+	config *tls.Config
+	cfg    *config.Config
 
 	missedHeartbeats int32
 	stopHeartbeat    chan struct{}
 	tunnels          map[string]*Tunnel
 	tunnelMutex      sync.RWMutex
-	
+
 	// New fields for v2.0
 	protocolEngine *protocol.ProtocolEngine
 	tenantID       string
@@ -74,13 +74,13 @@ type Tunnel struct {
 // NewClient creates a new CloudBridge Relay client
 func NewClient(useTLS bool, tlsConfig *tls.Config) *Client {
 	return &Client{
-		useTLS:        useTLS,
-		config:        tlsConfig,
-		stopHeartbeat: make(chan struct{}),
-		tunnels:       make(map[string]*Tunnel),
+		useTLS:         useTLS,
+		config:         tlsConfig,
+		stopHeartbeat:  make(chan struct{}),
+		tunnels:        make(map[string]*Tunnel),
 		protocolEngine: protocol.NewProtocolEngine(),
-		version:       protocol.ProtocolVersionV2,
-		features:      []string{
+		version:        protocol.ProtocolVersionV2,
+		features: []string{
 			protocol.FeatureTLS, protocol.FeatureHeartbeat, protocol.FeatureTunnelInfo,
 			protocol.FeatureMultiTenant, protocol.FeatureProxy, protocol.FeatureQUIC, protocol.FeatureMetrics,
 		},
@@ -90,13 +90,13 @@ func NewClient(useTLS bool, tlsConfig *tls.Config) *Client {
 // NewClientV1 creates a new CloudBridge Relay client for v1.0.0 (backward compatibility)
 func NewClientV1(useTLS bool, tlsConfig *tls.Config) *Client {
 	return &Client{
-		useTLS:        useTLS,
-		config:        tlsConfig,
-		stopHeartbeat: make(chan struct{}),
-		tunnels:       make(map[string]*Tunnel),
+		useTLS:         useTLS,
+		config:         tlsConfig,
+		stopHeartbeat:  make(chan struct{}),
+		tunnels:        make(map[string]*Tunnel),
 		protocolEngine: protocol.NewProtocolEngineV1(),
-		version:       protocol.ProtocolVersionV1,
-		features:      []string{
+		version:        protocol.ProtocolVersionV1,
+		features: []string{
 			protocol.FeatureTLS, protocol.FeatureJWT, protocol.FeatureTunneling, protocol.FeatureQUIC, protocol.FeatureHTTP2,
 		},
 	}
@@ -128,15 +128,15 @@ func NewClientFromConfig(cfg *config.Config) (*Client, error) {
 	}
 
 	client := &Client{
-		useTLS:        cfg.TLS.Enabled,
-		config:        tlsConfig,
-		cfg:           cfg,
-		stopHeartbeat: make(chan struct{}),
-		tunnels:       make(map[string]*Tunnel),
+		useTLS:         cfg.TLS.Enabled,
+		config:         tlsConfig,
+		cfg:            cfg,
+		stopHeartbeat:  make(chan struct{}),
+		tunnels:        make(map[string]*Tunnel),
 		protocolEngine: protocolEngine,
-		version:       version,
-		tenantID:      cfg.Tenant.ID,
-		features:      protocolEngine.GetFeatures(),
+		version:        version,
+		tenantID:       cfg.Tenant.ID,
+		features:       protocolEngine.GetFeatures(),
 	}
 
 	return client, nil
@@ -198,7 +198,7 @@ func (c *Client) SendMessage(msg interface{}) error {
 	if c.conn == nil {
 		return fmt.Errorf("not connected to server")
 	}
-	
+
 	if err := c.conn.SetWriteDeadline(time.Now().Add(ReadWriteTimeout)); err != nil {
 		return fmt.Errorf("failed to set write deadline: %w", err)
 	}
@@ -237,7 +237,18 @@ func (c *Client) ReadMessage() (map[string]interface{}, error) {
 
 // Handshake: ждет hello, отправляет auth, ждет auth_response
 func (c *Client) Handshake(token string) error {
-	// 1. Ждем hello
+	// 0. Сначала отправляем hello
+	var helloMsg interface{}
+	if c.version == protocol.ProtocolVersionV2 {
+		helloMsg = protocol.NewHelloMessage()
+	} else {
+		helloMsg = protocol.NewHelloMessageV1()
+	}
+	if err := c.SendMessage(helloMsg); err != nil {
+		return fmt.Errorf("failed to send hello: %w", err)
+	}
+
+	// 1. Ждем hello-ответ от сервера
 	hello, err := c.ReadMessage()
 	if err != nil {
 		return fmt.Errorf("failed to read hello: %w", err)
@@ -294,14 +305,14 @@ func (c *Client) CreateTunnel(localPort int, remoteHost string, remotePort int) 
 	if remotePort < 1 || remotePort > 65535 {
 		return "", fmt.Errorf("invalid remote port: %d (must be between 1 and 65535)", remotePort)
 	}
-	
+
 	// Check if connected
 	if !c.IsConnected() {
 		return "", fmt.Errorf("not connected to server")
 	}
-	
+
 	tunnelID := fmt.Sprintf("tunnel_%d_%s_%d", localPort, remoteHost, remotePort)
-	
+
 	tunnel := &Tunnel{
 		ID:         tunnelID,
 		LocalPort:  localPort,
@@ -333,7 +344,7 @@ func NewTLSConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
 		if !filepath.IsAbs(cleanCAFile) || strings.Contains(cleanCAFile, "..") {
 			return nil, fmt.Errorf("invalid CA file path: %s", caFile)
 		}
-		
+
 		// Additional security check - ensure CA file is within allowed directories
 		allowedDirs := []string{"/etc/cloudbridge-client/certs", "/etc/ssl/certs", "/usr/local/share/ca-certificates"}
 		allowed := false
@@ -346,7 +357,7 @@ func NewTLSConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
 		if !allowed {
 			return nil, fmt.Errorf("CA file path not in allowed directories: %s", caFile)
 		}
-		
+
 		caCert, err := os.ReadFile(cleanCAFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read CA cert: %w", err)
@@ -365,14 +376,14 @@ func NewTLSConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
 		// Validate certificate file paths to prevent directory traversal
 		cleanCertFile := filepath.Clean(certFile)
 		cleanKeyFile := filepath.Clean(keyFile)
-		
+
 		if !filepath.IsAbs(cleanCertFile) || strings.Contains(cleanCertFile, "..") {
 			return nil, fmt.Errorf("invalid cert file path: %s", certFile)
 		}
 		if !filepath.IsAbs(cleanKeyFile) || strings.Contains(cleanKeyFile, "..") {
 			return nil, fmt.Errorf("invalid key file path: %s", keyFile)
 		}
-		
+
 		// Additional security check - ensure certificate files are within allowed directories
 		allowedDirs := []string{"/etc/cloudbridge-client/certs", "/etc/ssl/private", "/usr/local/etc/ssl"}
 		certAllowed := false
@@ -391,7 +402,7 @@ func NewTLSConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
 		if !keyAllowed {
 			return nil, fmt.Errorf("key file path not in allowed directories: %s", keyFile)
 		}
-		
+
 		cert, err := tls.LoadX509KeyPair(cleanCertFile, cleanKeyFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load client cert: %w", err)
@@ -412,4 +423,4 @@ func NewTLSConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
 // IsConnected returns true if the client is connected
 func (c *Client) IsConnected() bool {
 	return c.conn != nil
-} 
+}
