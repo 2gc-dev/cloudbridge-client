@@ -102,6 +102,7 @@ docs/
 !LICENSE
 !SECURITY.md
 !PROJECT.md
+!CLEANUP_REPORT.md
 
 # Deployment files with real endpoints
 deploy/
