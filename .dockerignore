@@ -1,0 +1,75 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+docs/
+*.md
+LICENSE
+
+# Build artifacts
+build/
+dist/
+*.exe
+*.dmg
+*.deb
+*.rpm
+*.tar.gz
+
+# Test files
+test/
+*_test.go
+testdata/
+coverage.out
+coverage.html
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Docker
+Dockerfile*
+.dockerignore
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Security
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
+
+# Development
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Dependencies (will be downloaded in container)
+vendor/
+
+# Mock relay binary
+mock_relay
+cloudbridge-client 

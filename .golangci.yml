@@ -1,0 +1,122 @@
+version: 2
+
+run:
+  timeout: 5m
+  go: "1.23"
+
+linters:
+  default: standard
+  enable:
+    - staticcheck
+    - errcheck
+    - unused
+    - gosec
+    - revive
+    - gocyclo
+    - goconst
+    - dupl
+    - bodyclose
+    - noctx
+    - wrapcheck
+    - forbidigo
+    - gocritic
+    - thelper
+    - exhaustive
+    - funlen
+  disable:
+    - depguard
+  settings:
+    gocyclo:
+      min-complexity: 20
+    funlen:
+      lines: 100
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    dupl:
+      threshold: 100
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: var-naming
+          disabled: true
+        - name: unused-parameter
+          disabled: true
+        - name: context-as-argument
+          disabled: true
+        - name: redefines-builtin-id
+          disabled: true
+        - name: indent-error-flow
+          disabled: true
+    forbidigo:
+      forbid:
+        - pattern: fmt.Print
+        - pattern: fmt.Println
+        - pattern: fmt.Printf
+        - pattern: print
+        - pattern: println
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
+      disabled-checks:
+        - httpNoBody
+        - deferInLoop
+        - exitAfterDefer
+        - hugeParam
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+    gosec:
+      excludes:
+        - G204
+        - G304
+    thelper:
+      test:
+        first: true
+        name: true
+        begin: true
+      benchmark:
+        first: true
+        name: true
+        begin: true
+      tb:
+        first: true
+        name: true
+        begin: true
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - thelper
+      - path: test/
+        linters:
+          - errcheck
+          - forbidigo
+          - unused
+      - path: cmd/
+        linters:
+          - gocyclo
+          - funlen
+          - forbidigo
+          - unused
+      - path: pkg/
+        linters:
+          - gocyclo
+          - funlen
+          - unused
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+    - gofumpt
+
+issues:
+  max-per-linter: 0
+  max-same: 0 

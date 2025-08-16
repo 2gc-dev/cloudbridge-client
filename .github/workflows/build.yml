@@ -1,0 +1,171 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main, develop ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  GO_VERSION: '1.23'
+
+jobs:
+  # Сборка для всех платформ
+  build:
+    name: Build for ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # Linux
+          - os: linux
+            arch: amd64
+            binary_name: cloudbridge-client-linux-amd64
+          - os: linux
+            arch: arm64
+            binary_name: cloudbridge-client-linux-arm64
+          # Windows
+          - os: windows
+            arch: amd64
+            binary_name: cloudbridge-client-windows-amd64.exe
+          - os: windows
+            arch: arm64
+            binary_name: cloudbridge-client-windows-arm64.exe
+          # macOS
+          - os: darwin
+            arch: amd64
+            binary_name: cloudbridge-client-darwin-amd64
+          - os: darwin
+            arch: arm64
+            binary_name: cloudbridge-client-darwin-arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          go mod download
+          go mod tidy
+
+      - name: Build binary
+        run: |
+          VERSION=$(git describe --tags --always --dirty)
+          LDFLAGS="-X main.Version=${VERSION} -X main.BuildTime=$(date -u '+%Y-%m-%d_%H:%M:%S') -X main.GitCommit=$(git rev-parse HEAD)"
+          
+          GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build \
+            -ldflags "${LDFLAGS}" \
+            -o build/${{ matrix.binary_name }} \
+            ./cmd/cloudbridge-client
+
+      - name: Build mock relay
+        run: |
+          GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build \
+            -o build/mock_relay-${{ matrix.os }}-${{ matrix.arch }} \
+            ./test/mock_relay
+
+      - name: Create checksums
+        run: |
+          cd build
+          if [[ "${{ matrix.os }}" == "windows" ]]; then
+            sha256sum ${{ matrix.binary_name }} > ${{ matrix.binary_name }}.sha256
+          else
+            shasum -a 256 ${{ matrix.binary_name }} > ${{ matrix.binary_name }}.sha256
+          fi
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            build/${{ matrix.binary_name }}
+            build/${{ matrix.binary_name }}.sha256
+            build/mock_relay-${{ matrix.os }}-${{ matrix.arch }}
+          retention-days: 30
+
+  # Создание релиза при тегах
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List downloaded artifacts
+        run: |
+          echo "Downloaded artifacts structure:"
+          find artifacts -type f | sort
+          echo ""
+          echo "Looking for cloudbridge-client files:"
+          find artifacts -name "cloudbridge-client-*" | sort
+          echo ""
+          echo "Artifacts directory contents:"
+          ls -la artifacts/
+          for dir in artifacts/*/; do
+            echo "Contents of $dir:"
+            ls -la "$dir" || echo "Directory not found"
+          done
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          # Получаем тег
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          
+          # Получаем коммиты с последнего тега
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+          if [ -n "$PREVIOUS_TAG" ]; then
+            COMMITS=$(git log --oneline ${PREVIOUS_TAG}..HEAD)
+          else
+            COMMITS=$(git log --oneline -20)
+          fi
+          
+          NOTES="## 🎉 Релиз ${TAG_NAME}\n\n"
+          NOTES+="### 📋 Изменения:\n"
+          NOTES+="$(echo "$COMMITS" | sed 's/^/- /')\n\n"
+          NOTES+="### 📦 Собранные бинарники:\n"
+          NOTES+="- Linux AMD64\n"
+          NOTES+="- Linux ARM64\n"
+          NOTES+="- Windows AMD64\n"
+          NOTES+="- macOS AMD64\n"
+          NOTES+="- macOS ARM64\n\n"
+          NOTES+="### 🔗 Ссылки:\n"
+          NOTES+="- [Исходный код](https://github.com/${{ github.repository }})\n"
+          NOTES+="- [Issues](https://github.com/${{ github.repository }}/issues)\n"
+          NOTES+="- [Документация](https://github.com/${{ github.repository }}/blob/main/README.md)\n"
+          
+          echo "release_notes<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: "Release ${{ github.ref_name }}"
+          body: ${{ steps.release_notes.outputs.release_notes }}
+          files: |
+            artifacts/binaries-linux-amd64/cloudbridge-client-linux-amd64
+            artifacts/binaries-linux-arm64/cloudbridge-client-linux-arm64
+            artifacts/binaries-windows-amd64/cloudbridge-client-windows-amd64.exe
+            artifacts/binaries-darwin-amd64/cloudbridge-client-darwin-amd64
+            artifacts/binaries-darwin-arm64/cloudbridge-client-darwin-arm64
+          generate_release_notes: false
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }} 
