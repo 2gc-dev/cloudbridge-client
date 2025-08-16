@@ -8,7 +8,7 @@ on:
     branches: [ main ]
 
 env:
-  GO_VERSION: '1.23'
+  GO_VERSION: '1.21'
 
 jobs:
   # Сборка для всех платформ
@@ -64,12 +64,6 @@ jobs:
             -o build/${{ matrix.binary_name }} \
             ./cmd/cloudbridge-client
 
-      - name: Build mock relay
-        run: |
-          GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build \
-            -o build/mock_relay-${{ matrix.os }}-${{ matrix.arch }} \
-            ./test/mock_relay
-
       - name: Create checksums
         run: |
           cd build
@@ -86,7 +80,6 @@ jobs:
           path: |
             build/${{ matrix.binary_name }}
             build/${{ matrix.binary_name }}.sha256
-            build/mock_relay-${{ matrix.os }}-${{ matrix.arch }}
           retention-days: 30
 
   # Создание релиза при тегах
@@ -112,13 +105,6 @@ jobs:
           echo ""
           echo "Looking for cloudbridge-client files:"
           find artifacts -name "cloudbridge-client-*" | sort
-          echo ""
-          echo "Artifacts directory contents:"
-          ls -la artifacts/
-          for dir in artifacts/*/; do
-            echo "Contents of $dir:"
-            ls -la "$dir" || echo "Directory not found"
-          done
 
       - name: Generate release notes
         id: release_notes
@@ -134,19 +120,19 @@ jobs:
             COMMITS=$(git log --oneline -20)
           fi
           
-          NOTES="## 🎉 Релиз ${TAG_NAME}\n\n"
-          NOTES+="### 📋 Изменения:\n"
+          NOTES="## 🎉 Release ${TAG_NAME}\n\n"
+          NOTES+="### 📋 Changes:\n"
           NOTES+="$(echo "$COMMITS" | sed 's/^/- /')\n\n"
-          NOTES+="### 📦 Собранные бинарники:\n"
+          NOTES+="### 📦 Built binaries:\n"
           NOTES+="- Linux AMD64\n"
           NOTES+="- Linux ARM64\n"
           NOTES+="- Windows AMD64\n"
           NOTES+="- macOS AMD64\n"
           NOTES+="- macOS ARM64\n\n"
-          NOTES+="### 🔗 Ссылки:\n"
-          NOTES+="- [Исходный код](https://github.com/${{ github.repository }})\n"
+          NOTES+="### 🔗 Links:\n"
+          NOTES+="- [Source code](https://github.com/${{ github.repository }})\n"
           NOTES+="- [Issues](https://github.com/${{ github.repository }}/issues)\n"
-          NOTES+="- [Документация](https://github.com/${{ github.repository }}/blob/main/README.md)\n"
+          NOTES+="- [Documentation](https://github.com/${{ github.repository }}/blob/main/README.md)\n"
           
           echo "release_notes<<EOF" >> $GITHUB_OUTPUT
           echo -e "$NOTES" >> $GITHUB_OUTPUT
@@ -160,12 +146,17 @@ jobs:
           body: ${{ steps.release_notes.outputs.release_notes }}
           files: |
             artifacts/binaries-linux-amd64/cloudbridge-client-linux-amd64
+            artifacts/binaries-linux-amd64/cloudbridge-client-linux-amd64.sha256
             artifacts/binaries-linux-arm64/cloudbridge-client-linux-arm64
+            artifacts/binaries-linux-arm64/cloudbridge-client-linux-arm64.sha256
             artifacts/binaries-windows-amd64/cloudbridge-client-windows-amd64.exe
+            artifacts/binaries-windows-amd64/cloudbridge-client-windows-amd64.exe.sha256
             artifacts/binaries-darwin-amd64/cloudbridge-client-darwin-amd64
+            artifacts/binaries-darwin-amd64/cloudbridge-client-darwin-amd64.sha256
             artifacts/binaries-darwin-arm64/cloudbridge-client-darwin-arm64
+            artifacts/binaries-darwin-arm64/cloudbridge-client-darwin-arm64.sha256
           generate_release_notes: false
           draft: false
           prerelease: false
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }} 
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
